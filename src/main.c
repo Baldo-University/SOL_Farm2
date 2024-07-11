@@ -27,7 +27,7 @@ int main(int argc, char *argv[]) {
 	//Se non ne sono stati passati, il programma si interrompe immediatamente.
 	if(argc<=1) {
 		fprintf(stderr,"Usare il seguente formato: \n%s [-n <nthread] [-q qlen] [-d pathname] [-t delay]",argv[0]);
-		EXIT(exit_failure);
+		exit(EXIT_FAILURE);
 	}
 	
 	/*impostazione maschera*/
