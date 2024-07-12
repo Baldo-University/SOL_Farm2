@@ -41,21 +41,15 @@ static void *sighandler(void *arg) {
 		}
 		switch(sig) {
 		case SIGHUP:	//chiusura terminale
-			
-			break;
 		case SIGINT:
-			
-			break;
 		case SIGQUIT:
-			
-			break;
 		case SIGTERM:
 			
 			break;
-		case SIGUSR1:
+		case SIGUSR1:	//incrementa di uno i thread
 			
 			break;
-		case SIGUSR2:
+		case SIGUSR2:	//decrementa di uno i thread (minimo 1 thread)
 			
 			break;
 		default: ;
@@ -70,6 +64,12 @@ void masterworker(int argc, char *argv[], char *socket) {
 	long delay=DEFAULT_T;
 	
 	/*Gestione segnali*/
+	sigset_t mask;
+	sigemptyset(&mask);
+	sigaddset(&mask,SIGHUP);
+	sigaddset(&mask,SIGINT);
+	sigaddset(&mask,SIGQUIT);
+	sigaddset(&mask,SIGTERM);
 	//sigaction per ignorare SIGPIPE
 	struct sigaction s;
 	memset(&s,0,sizeof(s));
