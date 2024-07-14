@@ -6,16 +6,20 @@ Autore: Baldini Enrico
 
 Questa sezione di codice contiene il thread MasterWorker.
 Il masterworker prende i filename passati da linea di comando e le opzioni.
-Crea un thread che gestisca i segnali in modo sincrono
+Crea un thread che gestisca i segnali in modo sincrono (TODO)
 Crea un thread che inserisca i filepath in una lista (TODO)
 Crea un thread che tolga i file dalla suddetta lista e li metta sulla coda di produzione (TODO)
 Crea il threadpool di worker (TODO)
 */
 
+#include <errno.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include "masterworker.h"
@@ -43,7 +47,7 @@ static void *sighandler(void *arg) {
 		case SIGHUP:	//chiusura terminale
 		case SIGINT:
 		case SIGQUIT:
-		case SIGTERM:
+		case SIGTERM:	//stesso comportamento per questi quattro segnali
 			
 			break;
 		case SIGUSR1:	//incrementa di uno i thread
@@ -60,8 +64,8 @@ static void *sighandler(void *arg) {
 
 void masterworker(int argc, char *argv[], char *socket) {
 	long workers=DEFAULT_N;
-	size_t qlen=DEFAULT_Q;
-	long delay=DEFAULT_T;
+	size_t queue_length=DEFAULT_Q;
+	long queue_delay=DEFAULT_T;
 	
 	/*Gestione segnali*/
 	sigset_t mask;
@@ -82,12 +86,84 @@ void masterworker(int argc, char *argv[], char *socket) {
 	//un thread esplora le dir e salva i file nella prima e le directory nella seconda
 	//un thread prende i file della prima lista e li mette nella coda di produzione
 	node_t *files=NULL;		//lista di directory
-	node_t *dirs=NULL;		//lista di filename
-	node_t *dirs_aux=dirs;	//puntatore ausiliario
+	node_t *directories=NULL;		//lista di filename
+	node_t *directories_aux=dirs;	//puntatore ausiliario
 	
 	/*Analisi delle opzioni*/
 	int opt;
 	while((opt=getopt(argc,argv,"n:q:d:t:"))!=-1) {
 		
+		switch(opt) {
+	
+		//cambia il numero di thread
+		case 'n':
+			if(!(optarg && *optarg)) {
+				fprintf(stderr,"Errore nella lettura dell'opzione -%c.\n",opt);
+				break;
+			}
+			long optlong=strtol(optarg,NULL,10);
+			//controlla che il valore passato sia valido
+			if(errno==ERANGE || optlong<MIN_THREADS)	//di default, MIN_THREADS e' 1
+				fprintf(stderr,"Ignorata opzione -%c non valida (numero di thread worker).\n",opt);
+			else
+				workers=optlong;
+			break;
+		
+		//modifica la lunghezza della coda di produzione
+		case 'q':
+			if(!(optarg && *optarg)) {
+				fprintf(stderr,"Errore nella lettura dell'opzione -%c.\n",opt);
+				break;
+			}
+			long optlong=strtol(optarg,NULL,10);
+			if(errno==ERANGE || optlong<=0)
+				fprintf(stderr,"Ignorata opzione -%c non valida (dimensione coda di produzione).\n",opt);
+			else
+				queue_length=optlong;
+			break;
+		
+		//passa una directory in cui cercare ricorsivamente i file destinati alla coda di produzione
+		case 'd':
+			if(!(optarg && *optarg)) {
+				fprintf(stderr,"Errore nella lettura dell'opzione -%c.\n",opt);
+				break;
+			}
+			//controllo lunghezza pathname accettabile
+			if(strlen(optarg)>MAX_NAMELENGTH) {
+				fprintf(stderr,"Opzione -%c, pathname troppo lungo scartato.\n",opt);
+				break;
+			}
+			//controlla che la stringa passata indichi una directory
+			struct stat info;
+			ec_is(stat(optarg,&info),-1,"masterworker, getopt, stat");
+			if(!S_ISDIR(info.st_mode)) {
+				fprintf(stderr,"Opzione -%c, pathname indicato %s non e' directory.\n",opt,optarg);
+				break;
+			}
+			//aggiunge la directory alla lista di directory in cui fare la ricerca di file
+			node_t new_dir;
+			ec_is(malloc(sizeof(node_t),NULL,"masterworker, getopt, malloc");
+			strncpy(new_dir.name,optarg,MAX_NAMELENGTH);
+			new_dir.next=directories;
+			directories=new_dir;
+			break;
+		
+		//introduce ritardo di inserimento in coda
+		case 't':
+			if(!(optarg && *optarg)) {
+				fprintf(stderr,"Errore nella lettura dell'opzione -%c.\n",opt);
+				break;
+			}
+			long optlong=strtol(optarg,NULL,10);
+			if(errno==ERANGE || optlong<0)
+				fprintf(stderr,"Ignorata opzione -%c non valida (attesa di inserimento in coda di produzione).\n",opt);
+			else
+				queue_delay=optlong;
+			break;
+		
+		//opzione non considerata
+		default:
+			fprintf(stderr,"Passata opzione -%c non riconosciuta.\n",opt);
+		}
 	}
 }
