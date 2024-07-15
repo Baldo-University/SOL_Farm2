@@ -31,6 +31,13 @@ typedef struct node {
 	struct node *next;			//prossimo elemento di lista
 } node_t;
 
+//struct necessaria per cercare file delle directory passate con -d usando un thread
+typedef struct filesearch_arg {
+	int argind;				//optind
+	node_t *files;			//lista di file
+	node_t *directories;	//lista di directory
+} filesearch_arg_t;
+
 /*gestore sincrono di segnali*/
 static void *sighandler(void *arg) {
 	sigset_t *set=(sigset_t*)arg;
@@ -60,6 +67,12 @@ static void *sighandler(void *arg) {
 		}
 	}
 	return NULL;
+}
+
+/*Aggiunta di file binari alla lista appropriata*/
+static void *file_search(int nonopt_arg) {
+	int i;
+	for(i=nonopt_arg;
 }
 
 void masterworker(int argc, char *argv[], char *socket) {
@@ -166,4 +179,12 @@ void masterworker(int argc, char *argv[], char *socket) {
 			fprintf(stderr,"Passata opzione -%c non riconosciuta.\n",opt);
 		}
 	}
+	
+	//lancia thread che inserisce file nella lista di file
+	pthread_t file_finder;
+	filesaerch_arg_t file_finder_arg;
+	file_finder_arg.argind=optind;
+	file_finder_arg.files=files;
+	file_finder_arg.directories=directories;
+	ec_isnot(pthread_create(&file_finder,NULL,&file_search,file_finder_args),0,"masterworker, pthread_create");
 }

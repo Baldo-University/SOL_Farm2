@@ -26,7 +26,7 @@ int main(int argc, char *argv[]) {
 	//controllo del numero di argomenti passati. 
 	//Se non ne sono stati passati, il programma si interrompe immediatamente.
 	if(argc<=1) {
-		fprintf(stderr,"Usare il seguente formato: \n%s [-n <nthread] [-q qlen] [-d pathname] [-t delay]",argv[0]);
+		fprintf(stderr,"Usare il seguente formato: \n%s [-n <nthread>] [-q <qlen>] [-d <pathname>] [-t <delay>]",argv[0]);
 		exit(EXIT_FAILURE);
 	}
 	
