@@ -29,8 +29,10 @@ typedef struct node {
 //struct necessaria per cercare file delle directory passate con -d usando un thread
 typedef struct filesearch_arg {
 	int argind;				//optind
-	int numargs;			//argc
+	int argc;
+	char *argv[];
 	node_t *files;			//lista di file
+	pthread_mutex_t *mtx;	//lock mutex sulla lista di file
 	node_t *directories;	//lista di directory
 } filesearch_arg_t;
 
@@ -68,7 +70,16 @@ static void *sighandler(void *arg) {
 /*Aggiunta di file binari alla lista appropriata*/
 static void *file_search(filesearch_arg *args) {
 	int i;
-	for(i=;i<;);
+	FILE *file;
+	struct stat info;
+	for(i=args->argind;i<args->numargs;i++) {
+		ec_is(file=fopen(args.argv[i],"r"),NULL,"masterworker, file_search, fopen");
+		ec_is(stat(args.argv[i],&info),-1,"masterworker, file_search, stat");
+		if(!S_ISREG(info.st_mode))	//se il file non e' binario si chiude
+			ec_is(fclose(file),EOF,"masterworker, file_search, fclose");
+		
+		ec_isnot(pthread_mutex_lock(args->mtx),0,"masterworker, file_search, lock");
+	}
 }
 
 void masterworker(int argc, char *argv[], char *socket) {
@@ -95,15 +106,16 @@ void masterworker(int argc, char *argv[], char *socket) {
 	//un thread esplora le dir e salva i file nella prima e le directory nella seconda
 	//un thread prende i file della prima lista e li mette nella coda di produzione
 	node_t *files=NULL;		//lista di directory
+	pthread_mutex_t *files_mtx;	//lock sulla lista di file
+	pthread_mutex_init(&files_mtx,NULL);
+	//directories non necessita di lock
 	node_t *directories=NULL;		//lista di filename
 	node_t *directories_aux=dirs;	//puntatore ausiliario
 	
 	/*Analisi delle opzioni*/
 	int opt;
 	while((opt=getopt(argc,argv,"n:q:d:t:"))!=-1) {
-		
 		switch(opt) {
-	
 		//cambia il numero di thread
 		case 'n':
 			if(!(optarg && *optarg)) {
@@ -117,7 +129,6 @@ void masterworker(int argc, char *argv[], char *socket) {
 			else
 				workers=optlong;
 			break;
-		
 		//modifica la lunghezza della coda di produzione
 		case 'q':
 			if(!(optarg && *optarg)) {
@@ -130,7 +141,6 @@ void masterworker(int argc, char *argv[], char *socket) {
 			else
 				queue_length=optlong;
 			break;
-		
 		//passa una directory in cui cercare ricorsivamente i file destinati alla coda di produzione
 		case 'd':
 			if(!(optarg && *optarg)) {
@@ -156,7 +166,6 @@ void masterworker(int argc, char *argv[], char *socket) {
 			new_dir.next=directories;
 			directories=new_dir;
 			break;
-		
 		//introduce ritardo di inserimento in coda
 		case 't':
 			if(!(optarg && *optarg)) {
@@ -169,8 +178,6 @@ void masterworker(int argc, char *argv[], char *socket) {
 			else
 				queue_delay=optlong;
 			break;
-		
-		//opzione non considerata
 		default:
 			fprintf(stderr,"Passata opzione -%c non riconosciuta.\n",opt);
 		}
@@ -180,8 +187,10 @@ void masterworker(int argc, char *argv[], char *socket) {
 	pthread_t file_finder;
 	filesaerch_arg_t file_finder_arg
 	file_finder_arg.argind=optind;
-	file_finder_arg.numargs=argc;
+	file_finder_arg.argc=argc;
+	file_finder_arg.argv=argv;
 	file_finder_arg.files=files;
+	file_finder_arg.mtx=files_mtx;
 	file_finder_arg.directories=directories;
 	ec_isnot(pthread_create(&file_finder,NULL,&file_search,&file_finder_args),0,"masterworker, pthread_create");
 }
