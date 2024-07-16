@@ -1,9 +1,4 @@
 /*
-PROGETTO FARM2 2023/24
-Autore: Baldini Enrico
-
------------
-
 Questa sezione di codice contiene il thread MasterWorker.
 Il masterworker prende i filename passati da linea di comando e le opzioni.
 Crea un thread che gestisca i segnali in modo sincrono (TODO)
@@ -34,6 +29,7 @@ typedef struct node {
 //struct necessaria per cercare file delle directory passate con -d usando un thread
 typedef struct filesearch_arg {
 	int argind;				//optind
+	int numargs;			//argc
 	node_t *files;			//lista di file
 	node_t *directories;	//lista di directory
 } filesearch_arg_t;
@@ -70,9 +66,9 @@ static void *sighandler(void *arg) {
 }
 
 /*Aggiunta di file binari alla lista appropriata*/
-static void *file_search(int nonopt_arg) {
+static void *file_search(filesearch_arg *args) {
 	int i;
-	for(i=nonopt_arg;
+	for(i=;i<;);
 }
 
 void masterworker(int argc, char *argv[], char *socket) {
@@ -182,9 +178,10 @@ void masterworker(int argc, char *argv[], char *socket) {
 	
 	//lancia thread che inserisce file nella lista di file
 	pthread_t file_finder;
-	filesaerch_arg_t file_finder_arg;
+	filesaerch_arg_t file_finder_arg
 	file_finder_arg.argind=optind;
+	file_finder_arg.numargs=argc;
 	file_finder_arg.files=files;
 	file_finder_arg.directories=directories;
-	ec_isnot(pthread_create(&file_finder,NULL,&file_search,file_finder_args),0,"masterworker, pthread_create");
+	ec_isnot(pthread_create(&file_finder,NULL,&file_search,&file_finder_args),0,"masterworker, pthread_create");
 }
