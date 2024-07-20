@@ -67,18 +67,40 @@ static void *sighandler(void *arg) {
 	return NULL;
 }
 
+//Aggiunta di un elemento in testa ad una lista
+void list_add(node_t **head, char *name, int mode) {
+	node_t new;
+	ec_is(new=malloc(sizeof(node_t),NULL,"masterworker, listadd, malloc");
+	strncpy(new->name,name,MAX_NAMELENGTH);
+	switch(mode) {
+	case 0:	//aggiunta in testa
+		new->next=head;
+		head=new;
+		break;
+	case 1:	//aggiunta in coda
+		node_list aux=head;
+		while(aux->next!=NULL)
+			aux=aux->head;
+		aux->next=new;
+		aux=head;	//per consistenza rimettiamo il puntatore ausiliario in testa alla lista
+		break;
+	}
+}
+
 /*Aggiunta di file binari alla lista appropriata*/
-static void *file_search(filesearch_arg *args) {
+static void *file_search(filesearch_arg *thread_args) {
 	int i;
 	FILE *file;
 	struct stat info;
-	for(i=args->argind;i<args->numargs;i++) {
-		ec_is(file=fopen(args.argv[i],"r"),NULL,"masterworker, file_search, fopen");
-		ec_is(stat(args.argv[i],&info),-1,"masterworker, file_search, stat");
-		if(!S_ISREG(info.st_mode))	//se il file non e' binario si chiude
+	for(i=thread_args->argind;i<thread_args->numargs;i++) {
+		ec_is(file=fopen(thread_args.argv[i],"r"),NULL,"masterworker, file_search, fopen");
+		ec_is(stat(thread_args.argv[i],&info),-1,"masterworker, file_search, stat");
+		if(!S_ISREG(info.st_mode)) {	//se il file non e' binario si chiude
 			ec_is(fclose(file),EOF,"masterworker, file_search, fclose");
-		
+			continue;
+		}
 		ec_isnot(pthread_mutex_lock(args->mtx),0,"masterworker, file_search, lock");
+		list_add(thread_args.files,thread_args.argv[i],1);
 	}
 }
 
@@ -116,6 +138,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 	int opt;
 	while((opt=getopt(argc,argv,"n:q:d:t:"))!=-1) {
 		switch(opt) {
+		
 		//cambia il numero di thread
 		case 'n':
 			if(!(optarg && *optarg)) {
@@ -129,6 +152,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 			else
 				workers=optlong;
 			break;
+		
 		//modifica la lunghezza della coda di produzione
 		case 'q':
 			if(!(optarg && *optarg)) {
@@ -141,6 +165,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 			else
 				queue_length=optlong;
 			break;
+		
 		//passa una directory in cui cercare ricorsivamente i file destinati alla coda di produzione
 		case 'd':
 			if(!(optarg && *optarg)) {
@@ -160,12 +185,9 @@ void masterworker(int argc, char *argv[], char *socket) {
 				break;
 			}
 			//aggiunge la directory alla lista di directory in cui fare la ricerca di file
-			node_t new_dir;
-			ec_is(malloc(sizeof(node_t),NULL,"masterworker, getopt, malloc");
-			strncpy(new_dir.name,optarg,MAX_NAMELENGTH);
-			new_dir.next=directories;
-			directories=new_dir;
+			list_add(directories,optarg,0);
 			break;
+		
 		//introduce ritardo di inserimento in coda
 		case 't':
 			if(!(optarg && *optarg)) {
