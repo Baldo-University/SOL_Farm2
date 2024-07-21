@@ -3,11 +3,11 @@
 	
 	#define DEFAULT_N 4
 	#define DEFAULT_Q 8
-	#define DEFUALT_T 0
+	#define DEFAULT_T 0
 	#define MAX_NAMELENGTH 255
 	#define MIN_THREADS 1	//numero minimo di thread
 	
 	//funzionamento del master worker
 	//int e' argc, char** e' argv, char* e' il nome della socket
-	void masterthread(int,char**,char*);
+	void masterworker(int,char**,char*);
 #endif
