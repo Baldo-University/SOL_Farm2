@@ -21,7 +21,7 @@ int main(int argc, char *argv[]) {
 	//controllo del numero di argomenti passati. 
 	//Se non ne sono stati passati, il programma si interrompe immediatamente.
 	if(argc<=1) {
-		fprintf(stderr,"Usare il seguente formato: \n%s [-n <nthread>] [-q <qlen>] [-d <pathname>] [-t <delay>]",argv[0]);
+		fprintf(stderr,"Usare il seguente formato: \n%s [-n <nthread>] [-q <qlen>] [-d <pathname>] [-t <delay>]\n",argv[0]);
 		exit(EXIT_FAILURE);
 	}
 	
@@ -49,7 +49,7 @@ int main(int argc, char *argv[]) {
 	default:	//padre
 		//rimozione maschera dei segnali
 		ec_is(pthread_sigmask(SIG_SETMASK,&oldmask,NULL),-1,"main pthread_sigmask padre");
-		masterthread(argc,argv,SOCKNAME);
+		masterworker(argc,argv,SOCKNAME);
 		
 	}
 	//attesa fine del figlio collector
@@ -57,5 +57,6 @@ int main(int argc, char *argv[]) {
 	collector=waitpid(collector,&status,0);
 	if(WIFEXITED(status))
 		fprintf(stderr,"Stato collector:%d\n",WEXITSTATUS(status));
+	fprintf(stdout,"fine programma\n");
 	return 0;
 }
