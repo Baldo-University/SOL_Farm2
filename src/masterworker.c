@@ -30,13 +30,14 @@ typedef struct node {
 typedef struct filesearch_arg {
 	int argind;				//optind
 	int argc;
-	char *argv[];
+	char **argv;
 	node_t *files;			//lista di file
 	pthread_mutex_t *mtx;	//lock mutex sulla lista di file
 	node_t *directories;	//lista di directory
 } filesearch_arg_t;
 
-/*gestore sincrono di segnali*/
+
+//gestore sincrono di segnali
 static void *sighandler(void *arg) {
 	sigset_t *set=(sigset_t*)arg;
 	
@@ -67,27 +68,30 @@ static void *sighandler(void *arg) {
 	return NULL;
 }
 
+
 //Aggiunta di un elemento in testa ad una lista
 void list_add(node_t **head, char *name, int mode) {
-	node_t new;
-	ec_is(new=malloc(sizeof(node_t),NULL,"masterworker, listadd, malloc");
+	node_t *new=malloc(sizeof(node_t));
+	ec_is(new,NULL,"masterworker, listadd, malloc");
 	strncpy(new->name,name,MAX_NAMELENGTH);
+	node_t *aux=*head;
 	switch(mode) {
 	case 0:	//aggiunta in testa
-		new->next=head;
-		head=new;
+		new->next=*head;
+		*head=new;
 		break;
 	case 1:	//aggiunta in coda
-		node_list aux=head;
+		
 		while(aux->next!=NULL)
-			aux=aux->head;
+			aux=aux->next;
 		aux->next=new;
-		aux=head;	//per consistenza rimettiamo il puntatore ausiliario in testa alla lista
+		aux=*head;	//per consistenza rimettiamo il puntatore ausiliario in testa alla lista
 		break;
 	}
 }
 
-/*Aggiunta di file binari alla lista appropriata*/
+
+//Aggiunta di file binari alla lista appropriata
 static void *file_search(filesearch_arg *thread_args) {
 	int i;
 	FILE *file;
@@ -104,12 +108,17 @@ static void *file_search(filesearch_arg *thread_args) {
 	}
 }
 
+
 void masterworker(int argc, char *argv[], char *socket) {
 	long workers=DEFAULT_N;
 	size_t queue_length=DEFAULT_Q;
 	long queue_delay=DEFAULT_T;
 	
+	fprintf(stdout,"---MasterWorker Parte---\n");
+	fflush(stdout);
+	
 	/*Gestione segnali*/
+
 	sigset_t mask;
 	sigemptyset(&mask);
 	sigaddset(&mask,SIGHUP);
@@ -121,21 +130,26 @@ void masterworker(int argc, char *argv[], char *socket) {
 	memset(&s,0,sizeof(s));
 	s.sa_handler=SIG_IGN;
 	ec_is(sigaction(SIGPIPE,&s,NULL),-1,"masterworker, sigaction");
+	fprintf(stdout,"Segnali settati\n");
+	fflush(stdout);
 	//thread dedicato alla gestione sincrona dei segnali
+	
 	
 	//crea due liste, una di filename e l'altra di dirname con rispettivi lock
 	//la prima ha i nomi dei file da mandare a collector, la seconda le directory da esplorare
 	//un thread esplora le dir e salva i file nella prima e le directory nella seconda
 	//un thread prende i file della prima lista e li mette nella coda di produzione
 	node_t *files=NULL;		//lista di directory
-	pthread_mutex_t *files_mtx;	//lock sulla lista di file
+	pthread_mutex_t files_mtx;	//lock sulla lista di file
 	pthread_mutex_init(&files_mtx,NULL);
 	//directories non necessita di lock
 	node_t *directories=NULL;		//lista di filename
-	node_t *directories_aux=dirs;	//puntatore ausiliario
+	node_t *directories_aux=directories;	//puntatore ausiliario
+	
 	
 	/*Analisi delle opzioni*/
 	int opt;
+	long optlong;
 	while((opt=getopt(argc,argv,"n:q:d:t:"))!=-1) {
 		switch(opt) {
 		
@@ -145,7 +159,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 				fprintf(stderr,"Errore nella lettura dell'opzione -%c.\n",opt);
 				break;
 			}
-			long optlong=strtol(optarg,NULL,10);
+			optlong=strtol(optarg,NULL,10);
 			//controlla che il valore passato sia valido
 			if(errno==ERANGE || optlong<MIN_THREADS)	//di default, MIN_THREADS e' 1
 				fprintf(stderr,"Ignorata opzione -%c non valida (numero di thread worker).\n",opt);
@@ -159,7 +173,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 				fprintf(stderr,"Errore nella lettura dell'opzione -%c.\n",opt);
 				break;
 			}
-			long optlong=strtol(optarg,NULL,10);
+			optlong=strtol(optarg,NULL,10);
 			if(errno==ERANGE || optlong<=0)
 				fprintf(stderr,"Ignorata opzione -%c non valida (dimensione coda di produzione).\n",opt);
 			else
@@ -185,7 +199,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 				break;
 			}
 			//aggiunge la directory alla lista di directory in cui fare la ricerca di file
-			list_add(directories,optarg,0);
+			list_add(&directories,optarg,0);
 			break;
 		
 		//introduce ritardo di inserimento in coda
@@ -194,7 +208,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 				fprintf(stderr,"Errore nella lettura dell'opzione -%c.\n",opt);
 				break;
 			}
-			long optlong=strtol(optarg,NULL,10);
+			optlong=strtol(optarg,NULL,10);
 			if(errno==ERANGE || optlong<0)
 				fprintf(stderr,"Ignorata opzione -%c non valida (attesa di inserimento in coda di produzione).\n",opt);
 			else
@@ -204,7 +218,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 			fprintf(stderr,"Passata opzione -%c non riconosciuta.\n",opt);
 		}
 	}
-	
+
 	//lancia thread che inserisce file nella lista di file
 	pthread_t file_finder;
 	filesaerch_arg_t file_finder_arg
@@ -215,4 +229,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 	file_finder_arg.mtx=files_mtx;
 	file_finder_arg.directories=directories;
 	ec_isnot(pthread_create(&file_finder,NULL,&file_search,&file_finder_args),0,"masterworker, pthread_create");
+	
+	fprintf(stdout,"Numero thread: %ld\nLunghezza coda: %ld\nRitardo di inserimento: %ld\n",workers,queue_length,queue_delay);
+	fflush(stdout);
 }

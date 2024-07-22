@@ -21,7 +21,7 @@ int main(int argc, char *argv[]) {
 	//controllo del numero di argomenti passati. 
 	//Se non ne sono stati passati, il programma si interrompe immediatamente.
 	if(argc<=1) {
-		fprintf(stderr,"Usare il seguente formato: \n%s [-n <nthread>] [-q <qlen>] [-d <pathname>] [-t <delay>]\n",argv[0]);
+		fprintf(stderr,"Usare il seguente formato: \n%s [-n <nthread>] [-q <qlen>] [-d <pathname>] [-t <delay>] <filename> [, <filename>, ...]\n",argv[0]);
 		exit(EXIT_FAILURE);
 	}
 	
@@ -57,6 +57,6 @@ int main(int argc, char *argv[]) {
 	collector=waitpid(collector,&status,0);
 	if(WIFEXITED(status))
 		fprintf(stderr,"Stato collector:%d\n",WEXITSTATUS(status));
-	fprintf(stdout,"fine programma\n");
+	fprintf(stdout,"Fine programma\n");
 	return 0;
 }
