@@ -68,28 +68,22 @@ static void *sighandler(void *arg) {
 	return NULL;
 }
 
-
 //Aggiunta di un elemento in testa ad una lista
-void list_add(node_t **head, char *name, int mode) {
+void list_add(node_t **head, char *name) {
 	node_t *new=malloc(sizeof(node_t));
 	ec_is(new,NULL,"masterworker, listadd, malloc");
 	strncpy(new->name,name,MAX_NAMELENGTH);
-	node_t *aux=*head;
-	switch(mode) {
-	case 0:	//aggiunta in testa
-		new->next=*head;
-		*head=new;
-		break;
-	case 1:	//aggiunta in coda
-		
-		while(aux->next!=NULL)
-			aux=aux->next;
-		aux->next=new;
-		aux=*head;	//per consistenza rimettiamo il puntatore ausiliario in testa alla lista
-		break;
-	}
+	node_t *aux=*head;	//aggiunta in testa
+	new->next=*head;
+	*head=new;
 }
 
+void printlist(node_t **head) {
+	node_t *aux=*head;
+	while(aux!=NULL && aux->next!=NULL) {
+		fprintf(stdout,"%s\n",aux->name);
+	}
+}
 
 //Aggiunta di file binari alla lista appropriata
 static void *file_search(filesearch_arg *thread_args) {
@@ -107,7 +101,6 @@ static void *file_search(filesearch_arg *thread_args) {
 		list_add(thread_args.files,thread_args.argv[i],1);
 	}
 }
-
 
 void masterworker(int argc, char *argv[], char *socket) {
 	long workers=DEFAULT_N;
@@ -132,17 +125,10 @@ void masterworker(int argc, char *argv[], char *socket) {
 	ec_is(sigaction(SIGPIPE,&s,NULL),-1,"masterworker, sigaction");
 	fprintf(stdout,"Segnali settati\n");
 	fflush(stdout);
-	//thread dedicato alla gestione sincrona dei segnali
+	//thread dedicato alla gestione sincrona dei segnali TODO
 	
 	
-	//crea due liste, una di filename e l'altra di dirname con rispettivi lock
-	//la prima ha i nomi dei file da mandare a collector, la seconda le directory da esplorare
-	//un thread esplora le dir e salva i file nella prima e le directory nella seconda
-	//un thread prende i file della prima lista e li mette nella coda di produzione
-	node_t *files=NULL;		//lista di directory
-	pthread_mutex_t files_mtx;	//lock sulla lista di file
-	pthread_mutex_init(&files_mtx,NULL);
-	//directories non necessita di lock
+	//lista di directory passate con -d o all'interno delle suddette.
 	node_t *directories=NULL;		//lista di filename
 	node_t *directories_aux=directories;	//puntatore ausiliario
 	
@@ -199,7 +185,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 				break;
 			}
 			//aggiunge la directory alla lista di directory in cui fare la ricerca di file
-			list_add(&directories,optarg,0);
+			list_add(&directories,optarg);
 			break;
 		
 		//introduce ritardo di inserimento in coda
