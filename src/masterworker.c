@@ -18,6 +18,7 @@ Crea il threadpool di worker (TODO)
 #include <unistd.h>
 
 #include "masterworker.h"
+#include "pool.h"
 #include "utils.h"
 
 //struct dei file da valutare.
@@ -78,6 +79,7 @@ void list_add(node_t **head, char *name) {
 	*head=new;
 }
 
+//Stampa della lista (DEBUG)
 void printlist(node_t **head) {
 	node_t *aux=*head;
 	while(aux!=NULL && aux->next!=NULL) {
@@ -85,8 +87,32 @@ void printlist(node_t **head) {
 	}
 }
 
+//inserimento in coda dei file passati da linea di comando
+//TODO passare coda task come argomento
+void file_search(int argc, char *argv[]) {
+	int i;
+	FILE *file;
+	struct stat info;
+	for(i=thread_args->argind;i<thread_args->numargs;i++) {
+		ec_is(file=fopen(thread_args.argv[i],"r"),NULL,"masterworker, file_search, fopen");
+		ec_is(stat(thread_args.argv[i],&info),-1,"masterworker, file_search, stat");
+		if(!S_ISREG(info.st_mode)) {	//se il file non e' binario si chiude
+			ec_is(fclose(file),EOF,"masterworker, file_search, fclose");
+			continue;
+		}
+		ec_isnot(pthread_mutex_lock(args->mtx),0,"masterworker, file_search, lock");
+		list_add(thread_args.files,thread_args.argv[i],1);
+	}
+}
+
+//Ricerca ricorsiva delle directory passate con -d
+//Argomenti: lista directories e coda task
+void dir_search() {
+	
+}
+
 //Aggiunta di file binari alla lista appropriata
-static void *file_search(filesearch_arg *thread_args) {
+static void *enqueue_file(filesearch_arg *thread_args) {
 	int i;
 	FILE *file;
 	struct stat info;
@@ -205,6 +231,9 @@ void masterworker(int argc, char *argv[], char *socket) {
 		}
 	}
 
+	//creazione ed attivazione threadpool
+	//TODO 
+
 	//lancia thread che inserisce file nella lista di file
 	pthread_t file_finder;
 	filesaerch_arg_t file_finder_arg
@@ -214,7 +243,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 	file_finder_arg.files=files;
 	file_finder_arg.mtx=files_mtx;
 	file_finder_arg.directories=directories;
-	ec_isnot(pthread_create(&file_finder,NULL,&file_search,&file_finder_args),0,"masterworker, pthread_create");
+	ec_isnot(pthread_create(&file_finder,NULL,&enqueue_files,&file_finder_args),0,"masterworker, pthread_create");
 	
 	fprintf(stdout,"Numero thread: %ld\nLunghezza coda: %ld\nRitardo di inserimento: %ld\n",workers,queue_length,queue_delay);
 	fflush(stdout);
