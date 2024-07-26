@@ -13,40 +13,45 @@ usa per inserire task in coda.
 
 #include "pool.h"
 
-//coda circolare
-typedef struct queue {
-	size_t len;
-	char *spots;
-	unsigned int front;
-	unsigned int rear;
-} queue;
+/*
+//coda
+typedef struct queue_node {
 	
+	
+} queue;
+*/
+
 //crea il threadpool e la coda dei task
 //unsigned int: numero iniziale di worker
 //char*: nome socket
-ThreadPool *create_pool(unsigned int, char*) {
+int create_pool(size_t pool_size, size_t queue_len, char*) {
+	//controllo valori validi
+	if(pool_size<=0)
+		return -1;
+	if(queue_len<=0)
+		return -1;
 	
 }
 
 //attende che il threadpool finisca di elaborare i task passati
-void await_completion(ThreadPool*) {
+void await_pool_completion() {
 
 }
 
 //distrugge il threadpool
-void destroy_pool(Threadpool*) {
+void destroy_pool() {
 
 }
 
 //Inserisce task in coda
-void enqueue_task(Threadpool*,char*) {
+void enqueue_task(char*) {
 
 }
 
-void add_worker(Threadpool*) {
+void add_worker() {
 
 }
 
-void remove_worker(Threadpool*) {
+void remove_worker() {
 
 }

@@ -2,8 +2,7 @@
 Questa sezione di codice contiene il thread MasterWorker.
 Il masterworker prende i filename passati da linea di comando e le opzioni.
 Crea un thread che gestisca i segnali in modo sincrono (TODO)
-Crea un thread che inserisca i filepath in una lista (TODO)
-Crea un thread che tolga i file dalla suddetta lista e li metta sulla coda di produzione (TODO)
+Crea un thread che inserisca i filepath nella coda di produzione(TODO)
 Crea il threadpool di worker (TODO)
 */
 
@@ -189,7 +188,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 			if(errno==ERANGE || optlong<=0)
 				fprintf(stderr,"Ignorata opzione -%c non valida (dimensione coda di produzione).\n",opt);
 			else
-				queue_length=optlong;
+				queue_length=(size_t)optlong;
 			break;
 		
 		//passa una directory in cui cercare ricorsivamente i file destinati alla coda di produzione
@@ -231,8 +230,9 @@ void masterworker(int argc, char *argv[], char *socket) {
 		}
 	}
 
-	//creazione ed attivazione threadpool
-	//TODO 
+	//creazione threadpool
+	//TODO
+	
 
 	//lancia thread che inserisce file nella lista di file
 	pthread_t file_finder;
