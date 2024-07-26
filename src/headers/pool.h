@@ -1,21 +1,24 @@
 #ifndef THREADPOOL
 	#define THREADPOOL
 	
-	typedef struct ThreadPool ThreadPool;
+	#define MAX_NAMELENGTH 255
 	
 	//crea il threadpool
-	ThreadPool *create_pool(unsigned int);
+	//size_t: numero iniziale di worker
+	//char*: nome socket
+	//return: numero di worker
+	int create_pool(size_t, char*);
 	
 	//attende che il threadpool finisca di elaborare i task passati
-	void await_completion(ThreadPool*);
+	void await_pool_completion();
 	
 	//distrugge il threadpool
-	void destroy_pool(Threadpool*);
+	void destroy_pool();
 	
 	//Inserisce task in coda
-	void enqueue_task(Threadpool*,char*);
+	void enqueue_task(char*);
 	
-	void add_worker(Threadpool*);
-	void remove_worker(Threadpool*);
+	void add_worker();
+	void remove_worker();
 	
 #endif
