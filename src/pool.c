@@ -24,7 +24,7 @@ typedef struct queue_node {
 //crea il threadpool e la coda dei task
 //unsigned int: numero iniziale di worker
 //char*: nome socket
-int create_pool(size_t pool_size, size_t queue_len, char*) {
+int create_pool(size_t pool_size, size_t queue_len, char* socket) {
 	//controllo valori validi
 	if(pool_size<=0)
 		return -1;
