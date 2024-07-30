@@ -12,14 +12,17 @@ usa per inserire task in coda.
 #include <stdio.h>
 
 #include "pool.h"
+#include "utils.h"
 
-/*
-//coda
-typedef struct queue_node {
-	
-	
-} queue;
-*/
+//lunghezza max di stringa aumentata di 1 per accomodare il carattere di terminazione
+#define FILENAME_LEN 1+MAX_NAMELENGTH
+
+//La coda dei task sara' una lista di cui si tiene conto del numero di elementi.
+
+typedef struct task {
+	char name[FILENAME_LEN];
+	struct task *nest;
+} task_t;
 
 //crea il threadpool e la coda dei task
 //unsigned int: numero iniziale di worker
@@ -30,6 +33,8 @@ int create_pool(size_t pool_size, size_t queue_len, char* socket) {
 		return -1;
 	if(queue_len<=0)
 		return -1;
+	
+	//inizializzazione lista
 	
 }
 
