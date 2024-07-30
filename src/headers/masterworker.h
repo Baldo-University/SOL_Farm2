@@ -4,7 +4,6 @@
 	#define DEFAULT_N 4
 	#define DEFAULT_Q 8
 	#define DEFAULT_T 0
-	#define MAX_NAMELENGTH 255
 	#define MIN_THREADS 1	//numero minimo di thread
 	
 	//funzionamento del master worker

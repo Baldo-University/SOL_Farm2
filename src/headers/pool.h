@@ -1,8 +1,6 @@
 #ifndef THREADPOOL
 	#define THREADPOOL
 	
-	#define MAX_NAMELENGTH 255
-	
 	//crea il threadpool
 	//size_t: numero iniziale di worker
 	//char*: nome socket
