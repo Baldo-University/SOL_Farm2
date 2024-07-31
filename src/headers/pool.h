@@ -13,10 +13,13 @@
 	//distrugge il threadpool
 	void destroy_pool();
 	
-	//Inserisce task in coda
+	//Inserisce task in coda. Usato da masterworker
 	void enqueue_task(char*);
 	
+	//Aggiunge thread worker
 	void add_worker();
+	
+	//Rimuove thread worker
 	void remove_worker();
 	
 #endif
