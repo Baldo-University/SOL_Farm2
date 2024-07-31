@@ -24,6 +24,10 @@ typedef struct task {
 	struct task *nest;
 } task_t;
 
+size_t workers_num;
+
+//valori globali della coda di thread
+
 //crea il threadpool e la coda dei task
 //unsigned int: numero iniziale di worker
 //char*: nome socket
@@ -34,7 +38,7 @@ int create_pool(size_t pool_size, size_t queue_len, char* socket) {
 	if(queue_len<=0)
 		return -1;
 	
-	//inizializzazione lista
+	//inizializzazione worker
 	
 }
 
@@ -50,13 +54,15 @@ void destroy_pool() {
 
 //Inserisce task in coda
 void enqueue_task(char*) {
-
+	
 }
 
+//Aggiunge thread worker
 void add_worker() {
 
 }
 
+//Rimuove thread worker
 void remove_worker() {
 
 }
