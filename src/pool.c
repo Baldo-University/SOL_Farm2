@@ -17,20 +17,20 @@ usa per inserire task in coda.
 //lunghezza max di stringa aumentata di 1 per accomodare il carattere di terminazione
 #define FILENAME_LEN 1+MAX_NAMELENGTH
 
-//La coda dei task sara' una lista di cui si tiene conto del numero di elementi.
+//La coda di produzione e' una coda circolare, gestita da pool.c 
+//Array di stringhe di lunghezza FILENAME_LEN con indici di prima ed ultima posizione
 
-typedef struct task {
-	char name[FILENAME_LEN];
-	struct task *nest;
-} task_t;
+//I worker thread sono una lista pthread_t e tipo_lista*
 
+//numero di array. Non necessita di lock
 size_t workers_num;
 
-//valori globali della coda di thread
+//per la coda di produzione
+pthread_mutex_t task_mtx=PTHREAD_MUTEX_INITIALIZER;	//mutex coda task
+pthread_cond_t task_full=PTHREAD_COND_INITIALIZER;	//coda task piena
+pthread_cond_t task_empty=PTHREAD_COND_INITIALIZER;	//coda task vuota
 
-//crea il threadpool e la coda dei task
-//unsigned int: numero iniziale di worker
-//char*: nome socket
+//crea il threadpool e la coda di produzione
 int create_pool(size_t pool_size, size_t queue_len, char* socket) {
 	//controllo valori validi
 	if(pool_size<=0)
