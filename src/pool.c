@@ -30,13 +30,26 @@ pthread_mutex_t task_mtx=PTHREAD_MUTEX_INITIALIZER;	//mutex coda task
 pthread_cond_t task_full=PTHREAD_COND_INITIALIZER;	//coda task piena
 pthread_cond_t task_empty=PTHREAD_COND_INITIALIZER;	//coda task vuota
 
-//crea il threadpool e la coda di produzione
-int create_pool(size_t pool_size, size_t queue_len, char* socket) {
+//Funzionamento base del threadpool 
+int pool_function(size_t pool_size, size_t queue_len, char* socket) {
 	//controllo valori validi
 	if(pool_size<=0)
 		return -1;
 	if(queue_len<=0)
 		return -1;
+	
+	//crea threadpool
+	
+	
+	//crea coda di produzione
+	char **task_queue;
+	ec_is(task_queue=malloc(queue_len*sizeof(char*)),NULL,"pool, malloc coda 1");
+	int i;
+	for(i=0;i<queue_len;i++)
+		task_queue[i]=ec_is(malloc(FILENAME_LEN*sizeof(char)),NULL,"pool, malloc coda 2");
+	int front=-1;
+	int rear=-1;
+	
 	
 	//inizializzazione worker
 	
