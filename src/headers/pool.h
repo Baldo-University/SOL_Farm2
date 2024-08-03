@@ -5,7 +5,7 @@
 	//size_t: numero iniziale di worker
 	//char*: nome socket
 	//return: numero di worker
-	int create_pool(size_t, char*);
+	int pool?function(size_t, size_t, char*);
 	
 	//attende che il threadpool finisca di elaborare i task passati
 	void await_pool_completion();
