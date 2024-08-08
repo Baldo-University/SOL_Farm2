@@ -17,21 +17,37 @@ usa per inserire task in coda.
 //lunghezza max di stringa aumentata di 1 per accomodare il carattere di terminazione
 #define FILENAME_LEN 1+MAX_NAMELENGTH
 
-//La coda di produzione e' una coda circolare, gestita da pool.c 
-//Array di stringhe di lunghezza FILENAME_LEN con indici di prima ed ultima posizione
+//linked list di thread worker
+typedef struct workerlist {
+	pthread_t worker;
+	struct workerlist *next;
+}	workerlist_t;
 
-//I worker thread sono una lista pthread_t e tipo_lista*
+//Struttura principale del threadpool
+struct threadpool {
+	workerlist *workers;		//puntatore di testa alla lista dei worker
+	workerlist *workers_tail;	//puntatore di coda alla suddetta lista
+	size_t num_threads;			//numero totale di worker
+	size_t add_threads;			//worker da aggiungere (chiamata SIGUSR1)
+	size_t remove_threads;		//worker da rimuovere (chiamata SIGUSR2)
+	char **tasks;				//coda di produzione di tipo circolare
+	int tasks_head;				//indice task in testa
+	int tasks_tail;				//indice task in coda
+	pthread_mutex_t task_mtx;	//mutex coda task
+	pthread_cond_t task_full;
+	pthread_cond_t task_empty;
+	
+};
 
-//numero di array. Non necessita di lock
-size_t workers_num;
-
+/*
 //per la coda di produzione
 pthread_mutex_t task_mtx=PTHREAD_MUTEX_INITIALIZER;	//mutex coda task
 pthread_cond_t task_full=PTHREAD_COND_INITIALIZER;	//coda task piena
 pthread_cond_t task_empty=PTHREAD_COND_INITIALIZER;	//coda task vuota
+*/
 
 //Funzionamento base del threadpool 
-int pool_function(size_t pool_size, size_t queue_len, char* socket) {
+static void *pool_function(size_t pool_size, size_t queue_len, char* socket) {
 	//controllo valori validi
 	if(pool_size<=0)
 		return -1;
@@ -39,7 +55,11 @@ int pool_function(size_t pool_size, size_t queue_len, char* socket) {
 		return -1;
 	
 	//crea threadpool
-	
+	threadpool *pool=(threadpool*)malloc(sizeof(threadpool));
+	if(pool==NULL) {
+		fprintf(stderr,"Threadpool: non e' stato possibile allocare memoria al threadpool.\n");
+		return;
+	}
 	
 	//crea coda di produzione
 	char **task_queue;

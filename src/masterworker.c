@@ -26,7 +26,13 @@ typedef struct node {
 	struct node *next;			//prossimo elemento di lista
 } node_t;
 
-//struct necessaria per cercare file delle directory passate con -d usando un thread
+//struct necessaria per la funzione sighandler
+typedef struct sighanlder_arg {
+	sigset_t mask;
+	int terminate;
+} sighandler_arg_t;
+
+//struct necessaria per la funzione file_search
 typedef struct filesearch_arg {
 	int argind;				//optind
 	int argc;
@@ -36,12 +42,11 @@ typedef struct filesearch_arg {
 	node_t *directories;	//lista di directory
 } filesearch_arg_t;
 
-
 //gestore sincrono di segnali
 static void *sighandler(void *arg) {
 	sigset_t *set=(sigset_t*)arg;
 	
-	for(;;) {
+	while(!terminate) {
 		int sig;
 		int r=sigwait(set,&sig);
 		if(r!=0) {
@@ -50,10 +55,12 @@ static void *sighandler(void *arg) {
 			//TODO decidere cosa fare se sigwait fallisce
 		}
 		switch(sig) {
-		case SIGHUP:	//chiusura terminale
+		//se riceve tali segnali, si smette di inserire flie in coda.
+		//il programma esaurisce i file in coda e termina come farebbe normalmente
+		case SIGHUP:	//segnale di chiusura del terminale
 		case SIGINT:
 		case SIGQUIT:
-		case SIGTERM:	//stesso comportamento per questi quattro segnali
+		case SIGTERM:
 			
 			break;
 		case SIGUSR1:	//incrementa di uno i thread
@@ -73,11 +80,11 @@ void list_add(node_t **head, char *name) {
 	node_t *new=malloc(sizeof(node_t));
 	ec_is(new,NULL,"masterworker, listadd, malloc");
 	strncpy(new->name,name,MAX_NAMELENGTH);
-	node_t *aux=*head;	//aggiunta in testa
 	new->next=*head;
 	*head=new;
 }
 
+/*
 //Stampa della lista (DEBUG)
 void printlist(node_t **head) {
 	node_t *aux=*head;
@@ -85,7 +92,8 @@ void printlist(node_t **head) {
 		fprintf(stdout,"%s\n",aux->name);
 	}
 }
-
+*/
+/*
 //inserimento in coda dei file passati da linea di comando
 //TODO passare coda task come argomento
 void file_search(int argc, char *argv[]) {
@@ -103,13 +111,17 @@ void file_search(int argc, char *argv[]) {
 		list_add(thread_args.files,thread_args.argv[i],1);
 	}
 }
+*/
 
+/*
 //Ricerca ricorsiva delle directory passate con -d
 //Argomenti: lista directories e coda task
 void dir_search() {
 	
 }
+*/
 
+/*
 //Aggiunta di file binari alla lista appropriata
 static void *enqueue_file(filesearch_arg *thread_args) {
 	int i;
@@ -126,8 +138,9 @@ static void *enqueue_file(filesearch_arg *thread_args) {
 		list_add(thread_args.files,thread_args.argv[i],1);
 	}
 }
+*/
 
-void masterworker(int argc, char *argv[], char *socket) {
+int masterworker(int argc, char *argv[], char *socket) {
 	long workers=DEFAULT_N;
 	size_t queue_length=DEFAULT_Q;
 	long queue_delay=DEFAULT_T;
@@ -136,13 +149,13 @@ void masterworker(int argc, char *argv[], char *socket) {
 	fflush(stdout);
 	
 	/*Gestione segnali*/
-
 	sigset_t mask;
 	sigemptyset(&mask);
 	sigaddset(&mask,SIGHUP);
 	sigaddset(&mask,SIGINT);
 	sigaddset(&mask,SIGQUIT);
 	sigaddset(&mask,SIGTERM);
+	
 	//sigaction per ignorare SIGPIPE
 	struct sigaction s;
 	memset(&s,0,sizeof(s));
@@ -150,12 +163,18 @@ void masterworker(int argc, char *argv[], char *socket) {
 	ec_is(sigaction(SIGPIPE,&s,NULL),-1,"masterworker, sigaction");
 	fprintf(stdout,"Segnali settati\n");
 	fflush(stdout);
-	//thread dedicato alla gestione sincrona dei segnali TODO
 	
+	//thread dedicato alla gestione sincrona dei segnali TODO
+	pthread_t sighandler_thread;
+	
+	if(pthread_create(&sighandler_thread,NULL,&sighandler,&mask)!=0) {
+		fprintf(stderr,"Errore nella creazione del thread signal handler.\n");
+		return 1;
+	}
 	
 	//lista di directory passate con -d o all'interno delle suddette.
 	node_t *directories=NULL;		//lista di filename
-	node_t *directories_aux=directories;	//puntatore ausiliario
+	//node_t *directories_aux=directories;	//puntatore ausiliario
 	
 	
 	/*Analisi delle opzioni*/
@@ -233,10 +252,10 @@ void masterworker(int argc, char *argv[], char *socket) {
 	//creazione threadpool
 	//TODO
 	
-
+	/*
 	//lancia thread che inserisce file nella lista di file
 	pthread_t file_finder;
-	filesaerch_arg_t file_finder_arg
+	filesearch_arg_t file_finder_arg
 	file_finder_arg.argind=optind;
 	file_finder_arg.argc=argc;
 	file_finder_arg.argv=argv;
@@ -244,7 +263,18 @@ void masterworker(int argc, char *argv[], char *socket) {
 	file_finder_arg.mtx=files_mtx;
 	file_finder_arg.directories=directories;
 	ec_isnot(pthread_create(&file_finder,NULL,&enqueue_files,&file_finder_args),0,"masterworker, pthread_create");
+	*/
 	
 	fprintf(stdout,"Numero thread: %ld\nLunghezza coda: %ld\nRitardo di inserimento: %ld\n",workers,queue_length,queue_delay);
+	int i;
+	fprintf(stdout,"File passati direttamente da linea di comando:\n");
+	for(i=optind;i<argc;i++) {
+		fprintf(stdout,"%s\n",argv[i]);
+	}
 	fflush(stdout);
+	
+	if(pthread_join(sighandler_thread,NULL)!=0)
+		fprintf(stderr,"Errore nella join del thread signal handler");
+	
+	return 0;	//operazione completata con successo
 }

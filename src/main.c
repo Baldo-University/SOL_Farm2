@@ -35,7 +35,7 @@ int main(int argc, char *argv[]) {
 	
 	//Si crea un processo figlio con fork(), il quale lancera' collector.
 	//Il thread padre lancera' il MasterWorker.
-	//TODO rifare con signal masking
+	int mw_result;		//risultato del masterworker
 	collector=fork();
 	switch(collector) {
 	case -1:	//errore fork
@@ -49,7 +49,8 @@ int main(int argc, char *argv[]) {
 	default:	//padre
 		//rimozione maschera dei segnali
 		ec_is(pthread_sigmask(SIG_SETMASK,&oldmask,NULL),-1,"main pthread_sigmask padre");
-		masterworker(argc,argv,SOCKNAME);
+		mw_result=masterworker(argc,argv,SOCKNAME);
+		fprintf(stderr,"Masterworker uscito con risultato %d.\n",mw_result);
 	}
 	
 	//attesa fine del figlio collector
@@ -57,6 +58,7 @@ int main(int argc, char *argv[]) {
 	collector=waitpid(collector,&status,0);
 	if(WIFEXITED(status))
 		fprintf(stderr,"Stato collector:%d\n",WEXITSTATUS(status));
+	
 	fprintf(stdout,"Fine programma\n");
 	return 0;
 }
