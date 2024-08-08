@@ -54,10 +54,10 @@ int main(int argc, char *argv[]) {
 	}
 	
 	//attesa fine del figlio collector
-	int status;
-	collector=waitpid(collector,&status,0);
-	if(WIFEXITED(status))
-		fprintf(stderr,"Stato collector:%d\n",WEXITSTATUS(status));
+	int collector_status;
+	collector=waitpid(collector,&collector_status,0);
+	if(WIFEXITED(collector_status))
+		fprintf(stderr,"Stato collector:%d\n",WEXITSTATUS(collector_status));
 	
 	fprintf(stdout,"Fine programma\n");
 	return 0;

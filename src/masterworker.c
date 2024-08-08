@@ -26,12 +26,6 @@ typedef struct node {
 	struct node *next;			//prossimo elemento di lista
 } node_t;
 
-//struct necessaria per la funzione sighandler
-typedef struct sighanlder_arg {
-	sigset_t mask;
-	int terminate;
-} sighandler_arg_t;
-
 //struct necessaria per la funzione file_search
 typedef struct filesearch_arg {
 	int argind;				//optind
@@ -42,17 +36,19 @@ typedef struct filesearch_arg {
 	node_t *directories;	//lista di directory
 } filesearch_arg_t;
 
+/*
 //gestore sincrono di segnali
 static void *sighandler(void *arg) {
 	sigset_t *set=(sigset_t*)arg;
 	
-	while(!terminate) {
+	for(;;) {
 		int sig;
 		int r=sigwait(set,&sig);
 		if(r!=0) {
 			errno=r;
 			perror("ERRORE FATALE 'sigwait'");
 			//TODO decidere cosa fare se sigwait fallisce
+			//mettere nel retval di join un valore specifico
 		}
 		switch(sig) {
 		//se riceve tali segnali, si smette di inserire flie in coda.
@@ -74,7 +70,7 @@ static void *sighandler(void *arg) {
 	}
 	return NULL;
 }
-
+*/
 //Aggiunta di un elemento in testa ad una lista
 void list_add(node_t **head, char *name) {
 	node_t *new=malloc(sizeof(node_t));
@@ -164,13 +160,14 @@ int masterworker(int argc, char *argv[], char *socket) {
 	fprintf(stdout,"Segnali settati\n");
 	fflush(stdout);
 	
+	/*
 	//thread dedicato alla gestione sincrona dei segnali TODO
 	pthread_t sighandler_thread;
-	
 	if(pthread_create(&sighandler_thread,NULL,&sighandler,&mask)!=0) {
 		fprintf(stderr,"Errore nella creazione del thread signal handler.\n");
 		return 1;
 	}
+	*/
 	
 	//lista di directory passate con -d o all'interno delle suddette.
 	node_t *directories=NULL;		//lista di filename
@@ -273,8 +270,9 @@ int masterworker(int argc, char *argv[], char *socket) {
 	}
 	fflush(stdout);
 	
-	if(pthread_join(sighandler_thread,NULL)!=0)
-		fprintf(stderr,"Errore nella join del thread signal handler");
+	int sighandler_status;
+	if(pthread_join(sighandler_thread,&sighandler_status)!=0)
+		fprintf(stderr,"Errore nella join del thread signal handler: %d status\n",sighandler_status);
 	
 	return 0;	//operazione completata con successo
 }
