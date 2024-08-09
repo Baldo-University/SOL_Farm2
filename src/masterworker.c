@@ -20,6 +20,7 @@ Crea il threadpool di worker (TODO)
 #include "pool.h"
 #include "utils.h"
 
+
 //struct dei file da valutare.
 typedef struct node {
 	char name[MAX_NAMELENGTH];	//filename
@@ -28,8 +29,8 @@ typedef struct node {
 
 //struct argomento di sighandler
 typedef struct sighandler_arg {
-	int *terminate;				//terminazione inserimento file
-	int *thread_num_change;		//quanti thread aggiungere (positivo) o togliere (negativo)
+	volatile int *terminate;				//terminazione inserimento file
+	volatile int *thread_num_change;		//quanti thread aggiungere (positivo) o togliere (negativo)
 	sigset_t *set;				//maschera dei segnali
 } sighandler_arg_t;
 
@@ -46,9 +47,10 @@ typedef struct filesearch_arg {
 
 //gestore sincrono di segnali
 static void *sighandler(void *arg) {
-	int *term=(int*)arg->terminate;
-	
-	sigset_t *set=(sigset_t*)arg->set;
+	sighandler_arg_t *args= arg;
+	volatile int *term=args->terminate;
+	volatile int *thread_num_change=args->thread_num_change;
+	sigset_t *set=args->set;
 	
 	while((*term)==0) {
 		int sig;
@@ -68,10 +70,10 @@ static void *sighandler(void *arg) {
 			*term=1;
 			break;
 		case SIGUSR1:	//incrementa di uno i thread
-			(*thread_num)++;
+			(*thread_num_change)++;
 			break;
 		case SIGUSR2:	//decrementa di uno i thread (minimo 1 thread)
-			(*thread_num)--;
+			(*thread_num_change)--;
 			break;
 		default: ;
 		}
@@ -176,12 +178,12 @@ int masterworker(int argc, char *argv[], char *socket) {
 	
 	//thread per la gestione sincrona dei segnali
 	pthread_t sighandler_thread;
-	int term=0;	//settato a 1 quando il masterworker cessa di inviare file
-	int thread_num_change=0
+	volatile int term=0;	//settato a 1 quando il masterworker cessa di inviare file
+	volatile int thread_num_change=0;
 	sighandler_arg_t sigarg;
-	sigarg->terminate=&term;
-	sigarg->thread_num_change=&thread_num_change;
-	sigarg->set=&curmask;
+	sigarg.terminate=&term;
+	sigarg.thread_num_change=&thread_num_change;
+	sigarg.set=&curmask;
 	if(pthread_create(&sighandler_thread,NULL,&sighandler,&sigarg)!=0) {
 		fprintf(stderr,"Errore nella creazione del thread signal handler.\n");
 		return 1;
