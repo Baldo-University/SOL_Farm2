@@ -26,7 +26,14 @@ typedef struct node {
 	struct node *next;			//prossimo elemento di lista
 } node_t;
 
-//struct necessaria per la funzione file_search
+//struct argomento di sighandler
+typedef struct sighandler_arg {
+	int *terminate;				//terminazione inserimento file
+	int *thread_num_change;		//quanti thread aggiungere (positivo) o togliere (negativo)
+	sigset_t *set;				//maschera dei segnali
+} sighandler_arg_t;
+
+//struct argomento di file_search
 typedef struct filesearch_arg {
 	int argind;				//optind
 	int argc;
@@ -36,19 +43,20 @@ typedef struct filesearch_arg {
 	node_t *directories;	//lista di directory
 } filesearch_arg_t;
 
-/*
+
 //gestore sincrono di segnali
 static void *sighandler(void *arg) {
-	sigset_t *set=(sigset_t*)arg;
+	int *term=(int*)arg->terminate;
 	
-	for(;;) {
+	sigset_t *set=(sigset_t*)arg->set;
+	
+	while((*term)==0) {
 		int sig;
 		int r=sigwait(set,&sig);
 		if(r!=0) {
 			errno=r;
 			perror("ERRORE FATALE 'sigwait'");
-			//TODO decidere cosa fare se sigwait fallisce
-			//mettere nel retval di join un valore specifico
+			*term=1;
 		}
 		switch(sig) {
 		//se riceve tali segnali, si smette di inserire flie in coda.
@@ -57,20 +65,20 @@ static void *sighandler(void *arg) {
 		case SIGINT:
 		case SIGQUIT:
 		case SIGTERM:
-			
+			*term=1;
 			break;
 		case SIGUSR1:	//incrementa di uno i thread
-			
+			(*thread_num)++;
 			break;
 		case SIGUSR2:	//decrementa di uno i thread (minimo 1 thread)
-			
+			(*thread_num)--;
 			break;
 		default: ;
 		}
 	}
 	return NULL;
 }
-*/
+
 //Aggiunta di un elemento in testa ad una lista
 void list_add(node_t **head, char *name) {
 	node_t *new=malloc(sizeof(node_t));
@@ -137,42 +145,59 @@ static void *enqueue_file(filesearch_arg *thread_args) {
 */
 
 int masterworker(int argc, char *argv[], char *socket) {
-	long workers=DEFAULT_N;
-	size_t queue_length=DEFAULT_Q;
-	long queue_delay=DEFAULT_T;
 	
 	fprintf(stdout,"---MasterWorker Parte---\n");
 	fflush(stdout);
 	
-	/*Gestione segnali*/
+	//inizia mascherando tutti i segnali
+	//mask: blocca tutti i segnali
+	//curmask: blocca i segnali specificati dal testo
+	sigset_t curmask;
+	/*
 	sigset_t mask;
-	sigemptyset(&mask);
-	sigaddset(&mask,SIGHUP);
-	sigaddset(&mask,SIGINT);
-	sigaddset(&mask,SIGQUIT);
-	sigaddset(&mask,SIGTERM);
+	ec_is(sigfillset(&mask),-1,"masterworker, riempimento maschera");
+	ec_is(pthread_sigmask(SIG_SETMASK,&mask,NULL),-1,"masterworker, mascheramento di tutti i segnali");
+	*/
+	ec_is(sigemptyset(&curmask),-1,"masterworker, sigemptyset");
+	ec_is(sigaddset(&curmask,SIGHUP),-1,"masterworker, sigaddset SIGHUP");
+	ec_is(sigaddset(&curmask,SIGINT),-1,"masterworker, sigaddset SIGINT");
+	ec_is(sigaddset(&curmask,SIGQUIT),-1,"masterworker, sigaddset SIGQUIT");
+	ec_is(sigaddset(&curmask,SIGTERM),-1,"masterworker, sigaddset SIGTERM");
+	ec_is(sigaddset(&curmask,SIGUSR1),-1,"masterworker, sigaddset SIGUSR1");
+	ec_is(sigaddset(&curmask,SIGUSR2),-1,"masterworker, sigaddset SIGUSR2");
+	//impostazione della nuova mask
+	ec_isnot(pthread_sigmask(SIG_BLOCK,&curmask,NULL),0,"masterworker, pthread_sigmask FATAL ERROR");
 	
 	//sigaction per ignorare SIGPIPE
 	struct sigaction s;
 	memset(&s,0,sizeof(s));
 	s.sa_handler=SIG_IGN;
 	ec_is(sigaction(SIGPIPE,&s,NULL),-1,"masterworker, sigaction");
-	fprintf(stdout,"Segnali settati\n");
-	fflush(stdout);
 	
-	/*
-	//thread dedicato alla gestione sincrona dei segnali TODO
+	//thread per la gestione sincrona dei segnali
 	pthread_t sighandler_thread;
-	if(pthread_create(&sighandler_thread,NULL,&sighandler,&mask)!=0) {
+	int term=0;	//settato a 1 quando il masterworker cessa di inviare file
+	int thread_num_change=0
+	sighandler_arg_t sigarg;
+	sigarg->terminate=&term;
+	sigarg->thread_num_change=&thread_num_change;
+	sigarg->set=&curmask;
+	if(pthread_create(&sighandler_thread,NULL,&sighandler,&sigarg)!=0) {
 		fprintf(stderr,"Errore nella creazione del thread signal handler.\n");
 		return 1;
 	}
-	*/
+	
+	//ec_is(pthread_sigmask(SIG_SETMASK,),-1,"masterworker, rimozione maschera completa");
+	fprintf(stdout,"Segnali settati\n");
+	fflush(stdout);
+	
+	long workers=DEFAULT_N;
+	size_t queue_length=DEFAULT_Q;
+	long queue_delay=DEFAULT_T;
 	
 	//lista di directory passate con -d o all'interno delle suddette.
 	node_t *directories=NULL;		//lista di filename
 	//node_t *directories_aux=directories;	//puntatore ausiliario
-	
 	
 	/*Analisi delle opzioni*/
 	int opt;
@@ -270,9 +295,8 @@ int masterworker(int argc, char *argv[], char *socket) {
 	}
 	fflush(stdout);
 	
-	int sighandler_status;
-	if(pthread_join(sighandler_thread,&sighandler_status)!=0)
-		fprintf(stderr,"Errore nella join del thread signal handler: %d status\n",sighandler_status);
+	//chiusura forzata del signal handler thread
+	ec_is(pthread_kill(sighandler_thread,SIGQUIT),0,"masterworker, pthread_kill di signal handler");
 	
 	return 0;	//operazione completata con successo
 }
