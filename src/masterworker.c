@@ -91,6 +91,16 @@ void list_add(node_t **head, char *name) {
 	*head=new;
 }
 
+//deallocazione memoria lista
+void list_free(node_t **head) {
+	node_t *aux=*head;;
+	while(aux!=NULL) {
+		*head=(*head)->next;
+		free(aux);
+		aux=*head;
+	}
+}
+
 /*
 //Stampa della lista (DEBUG)
 void printlist(node_t **head) {
@@ -262,16 +272,16 @@ int masterworker(int argc, char *argv[], char *socket) {
 	}
 
 	//creazione threadpool
+	
+	
 	//ricerca nelle directory -d
-	node_t *dir_rear=directories;	//puntatore ausiliario alla coda di lista
-	node_t *dir_aux;				//secondo puntatore ausiliario per la cancellazione 
-	while(dir_rear!=NULL && dir_rear->next!=NULL)
-		dir_rear=dir_rear->next;
+	DIR *dir=opendir(
 	while(directories!=NULL) {
-		if(term) {	//se bisogna chiudere anticipatamente il programma
+		if(term)	//se bisogna chiudere anticipatamente il programma
+			list_free(&directories);
+		else {
 			
 		}
-		
 	}
 	
 	/*
