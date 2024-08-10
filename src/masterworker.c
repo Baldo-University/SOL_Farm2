@@ -4,6 +4,7 @@ Il masterworker prende i filename passati da linea di comando e le opzioni.
 Crea un thread che gestisca i segnali in modo sincrono (TODO)
 Crea un thread che inserisca i filepath nella coda di produzione(TODO)
 Crea il threadpool di worker (TODO)
+Thread timer per il ritardo di inserimento in coda?
 */
 
 #include <errno.h>
@@ -147,28 +148,19 @@ static void *enqueue_file(filesearch_arg *thread_args) {
 */
 
 int masterworker(int argc, char *argv[], char *socket) {
+	fprintf(stderr,"---MasterWorker Parte---\n");
 	
-	fprintf(stdout,"---MasterWorker Parte---\n");
-	fflush(stdout);
-	
-	//inizia mascherando tutti i segnali
-	//mask: blocca tutti i segnali
-	//curmask: blocca i segnali specificati dal testo
-	sigset_t curmask;
-	/*
+	//gestione segnali
 	sigset_t mask;
-	ec_is(sigfillset(&mask),-1,"masterworker, riempimento maschera");
-	ec_is(pthread_sigmask(SIG_SETMASK,&mask,NULL),-1,"masterworker, mascheramento di tutti i segnali");
-	*/
-	ec_is(sigemptyset(&curmask),-1,"masterworker, sigemptyset");
-	ec_is(sigaddset(&curmask,SIGHUP),-1,"masterworker, sigaddset SIGHUP");
-	ec_is(sigaddset(&curmask,SIGINT),-1,"masterworker, sigaddset SIGINT");
-	ec_is(sigaddset(&curmask,SIGQUIT),-1,"masterworker, sigaddset SIGQUIT");
-	ec_is(sigaddset(&curmask,SIGTERM),-1,"masterworker, sigaddset SIGTERM");
-	ec_is(sigaddset(&curmask,SIGUSR1),-1,"masterworker, sigaddset SIGUSR1");
-	ec_is(sigaddset(&curmask,SIGUSR2),-1,"masterworker, sigaddset SIGUSR2");
+	ec_is(sigemptyset(&mask),-1,"masterworker, sigemptyset");
+	ec_is(sigaddset(&mask,SIGHUP),-1,"masterworker, sigaddset SIGHUP");
+	ec_is(sigaddset(&mask,SIGINT),-1,"masterworker, sigaddset SIGINT");
+	ec_is(sigaddset(&mask,SIGQUIT),-1,"masterworker, sigaddset SIGQUIT");
+	ec_is(sigaddset(&mask,SIGTERM),-1,"masterworker, sigaddset SIGTERM");
+	ec_is(sigaddset(&mask,SIGUSR1),-1,"masterworker, sigaddset SIGUSR1");
+	ec_is(sigaddset(&mask,SIGUSR2),-1,"masterworker, sigaddset SIGUSR2");
 	//impostazione della nuova mask
-	ec_isnot(pthread_sigmask(SIG_BLOCK,&curmask,NULL),0,"masterworker, pthread_sigmask FATAL ERROR");
+	ec_isnot(pthread_sigmask(SIG_BLOCK,&mask,NULL),0,"masterworker, pthread_sigmask FATAL ERROR");
 	
 	//sigaction per ignorare SIGPIPE
 	struct sigaction s;
@@ -176,20 +168,17 @@ int masterworker(int argc, char *argv[], char *socket) {
 	s.sa_handler=SIG_IGN;
 	ec_is(sigaction(SIGPIPE,&s,NULL),-1,"masterworker, sigaction");
 	
-	//thread per la gestione sincrona dei segnali
+	//thread detached per la gestione sincrona dei segnali
 	pthread_t sighandler_thread;
 	volatile int term=0;	//settato a 1 quando il masterworker cessa di inviare file
 	volatile int thread_num_change=0;
 	sighandler_arg_t sigarg;
 	sigarg.terminate=&term;
 	sigarg.thread_num_change=&thread_num_change;
-	sigarg.set=&curmask;
-	if(pthread_create(&sighandler_thread,NULL,&sighandler,&sigarg)!=0) {
-		fprintf(stderr,"Errore nella creazione del thread signal handler.\n");
-		return 1;
-	}
+	sigarg.set=&mask;
+	ec_isnot(pthread_create(&sighandler_thread,NULL,&sighandler,&sigarg),0,"masterworker, pthread_create sighandler");
+	ec_isnot(pthread_detach(sighandler_thread),0,"masterworker, pthread_detach");
 	
-	//ec_is(pthread_sigmask(SIG_SETMASK,),-1,"masterworker, rimozione maschera completa");
 	fprintf(stdout,"Segnali settati\n");
 	fflush(stdout);
 	
@@ -199,7 +188,6 @@ int masterworker(int argc, char *argv[], char *socket) {
 	
 	//lista di directory passate con -d o all'interno delle suddette.
 	node_t *directories=NULL;		//lista di filename
-	//node_t *directories_aux=directories;	//puntatore ausiliario
 	
 	/*Analisi delle opzioni*/
 	int opt;
@@ -274,7 +262,17 @@ int masterworker(int argc, char *argv[], char *socket) {
 	}
 
 	//creazione threadpool
-	//TODO
+	//ricerca nelle directory -d
+	node_t *dir_rear=directories;	//puntatore ausiliario alla coda di lista
+	node_t *dir_aux;				//secondo puntatore ausiliario per la cancellazione 
+	while(dir_rear!=NULL && dir_rear->next!=NULL)
+		dir_rear=dir_rear->next;
+	while(directories!=NULL) {
+		if(term) {	//se bisogna chiudere anticipatamente il programma
+			
+		}
+		
+	}
 	
 	/*
 	//lancia thread che inserisce file nella lista di file
