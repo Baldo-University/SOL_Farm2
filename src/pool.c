@@ -10,12 +10,13 @@ usa per inserire task in coda.
 */
 
 #include <stdio.h>
+#include <pthread.h>
 
 #include "pool.h"
 #include "utils.h"
 
 //lunghezza max di stringa aumentata di 1 per accomodare il carattere di terminazione
-#define FILENAME_LEN 1+MAX_NAMELENGTH
+#define MAX_PATHNAME_LEN 1+MAX_NAMELENGTH
 
 //linked list di thread worker
 typedef struct workerlist {
@@ -48,6 +49,8 @@ pthread_cond_t task_empty=PTHREAD_COND_INITIALIZER;	//coda task vuota
 
 //Funzionamento base del threadpool 
 static void *pool_function(size_t pool_size, size_t queue_len, char* socket) {
+	fprintf(stderr,"Threadpool parte\n");
+	
 	//controllo valori validi
 	if(pool_size<=0)
 		return -1;

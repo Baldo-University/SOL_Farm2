@@ -7,6 +7,7 @@ Crea il threadpool di worker (TODO)
 Thread timer per il ritardo di inserimento in coda?
 */
 
+#include <dirent.h>
 #include <errno.h>
 #include <pthread.h>
 #include <signal.h>
@@ -21,45 +22,35 @@ Thread timer per il ritardo di inserimento in coda?
 #include "pool.h"
 #include "utils.h"
 
+#define MAX_PATHNAME_LEN 1+MAX_NAMELENGTH
+
+//valore pari ad 1 quando parte, settato a zero solo quando viene terminato prima di terminare
+static int running;
+static pthread_mutex_t running_mtx=PTHREAD_MUTEX_INITIALIZER;
+//Contatore di segnali SIGUSR
+static int thread_num_change;
+static pthread_mutex_t thread_num_mtx=PTHREAD_MUTEX_INITIALIZER;
 
 //struct dei file da valutare.
 typedef struct node {
-	char name[MAX_NAMELENGTH];	//filename
+	char name[MAX_PATHNAME_LEN];	//filename
 	struct node *next;			//prossimo elemento di lista
 } node_t;
 
-//struct argomento di sighandler
-typedef struct sighandler_arg {
-	volatile int *terminate;				//terminazione inserimento file
-	volatile int *thread_num_change;		//quanti thread aggiungere (positivo) o togliere (negativo)
-	sigset_t *set;				//maschera dei segnali
-} sighandler_arg_t;
-
-//struct argomento di file_search
-typedef struct filesearch_arg {
-	int argind;				//optind
-	int argc;
-	char **argv;
-	node_t *files;			//lista di file
-	pthread_mutex_t *mtx;	//lock mutex sulla lista di file
-	node_t *directories;	//lista di directory
-} filesearch_arg_t;
-
-
 //gestore sincrono di segnali
 static void *sighandler(void *arg) {
-	sighandler_arg_t *args= arg;
-	volatile int *term=args->terminate;
-	volatile int *thread_num_change=args->thread_num_change;
-	sigset_t *set=args->set;
+	sigset_t *set=(sigset_t*)arg;
 	
-	while((*term)==0) {
+	for(;;) {
 		int sig;
 		int r=sigwait(set,&sig);
 		if(r!=0) {
 			errno=r;
 			perror("ERRORE FATALE 'sigwait'");
-			*term=1;
+			ec_isnot(pthread_mutex_lock(&running_mtx),0,"masterworker, sighandler, lock");
+			running=0;
+			ec_isnot(pthread_mutex_unlock(&running_mtx),0,"masterworker, sighandler, unlock");
+			return NULL;
 		}
 		switch(sig) {
 		//se riceve tali segnali, si smette di inserire flie in coda.
@@ -68,14 +59,23 @@ static void *sighandler(void *arg) {
 		case SIGINT:
 		case SIGQUIT:
 		case SIGTERM:
-			*term=1;
+			ec_isnot(pthread_mutex_lock(&running_mtx),0,"masterworker, sighandler, lock");
+			running=0;
+			ec_isnot(pthread_mutex_unlock(&running_mtx),0,"masterworker, sighandler, unlock");
+			return NULL;
+		
+		case SIGUSR1:	//incrementa di uno i worker
+			ec_isnot(pthread_mutex_lock(&thread_num_mtx),0,"masterworker, sighandler, lock thread_num SIGUSR1");
+			thread_num_change++;
+			ec_isnot(pthread_mutex_unlock(&thread_num_mtx),0,"masterworker, sighandler, unlock thread_num SIGUSR1");
 			break;
-		case SIGUSR1:	//incrementa di uno i thread
-			(*thread_num_change)++;
+		
+		case SIGUSR2:	//decrementa di uno i worker (NB: minimo 1 thread nel pool)
+			ec_isnot(pthread_mutex_lock(&thread_num_mtx),0,"masterworker, sighandler, lock thread_num SIGUSR2");
+			thread_num_change--;
+			ec_isnot(pthread_mutex_unlock(&thread_num_mtx),0,"masterworker, sighandler, unlock thread_num SIGUSR2");
 			break;
-		case SIGUSR2:	//decrementa di uno i thread (minimo 1 thread)
-			(*thread_num_change)--;
-			break;
+		
 		default: ;
 		}
 	}
@@ -83,12 +83,27 @@ static void *sighandler(void *arg) {
 }
 
 //Aggiunta di un elemento in testa ad una lista
-void list_add(node_t **head, char *name) {
+void list_add_head(node_t **head, char *name) {
 	node_t *new=malloc(sizeof(node_t));
 	ec_is(new,NULL,"masterworker, listadd, malloc");
 	strncpy(new->name,name,MAX_NAMELENGTH);
 	new->next=*head;
 	*head=new;
+}
+
+void list_add_tail(node_t **head, char *name) {
+	node_t *new=malloc(sizeof(node_t));
+	ec_is(new,NULL,"masterworker, listadd, malloc");
+	strncpy(new->name,name,MAX_NAMELENGTH);
+	new->next=NULL;
+	node_t *aux=*head;
+	if(*head==NULL) {
+		*head=new;
+		return;
+	}
+	while(aux->next!=NULL)
+		aux=aux->next;
+	aux->next=new;
 }
 
 //deallocazione memoria lista
@@ -101,15 +116,6 @@ void list_free(node_t **head) {
 	}
 }
 
-/*
-//Stampa della lista (DEBUG)
-void printlist(node_t **head) {
-	node_t *aux=*head;
-	while(aux!=NULL && aux->next!=NULL) {
-		fprintf(stdout,"%s\n",aux->name);
-	}
-}
-*/
 /*
 //inserimento in coda dei file passati da linea di comando
 //TODO passare coda task come argomento
@@ -157,8 +163,12 @@ static void *enqueue_file(filesearch_arg *thread_args) {
 }
 */
 
-int masterworker(int argc, char *argv[], char *socket) {
+void masterworker(int argc, char *argv[], char *socket) {
 	fprintf(stderr,"---MasterWorker Parte---\n");
+	
+	ec_isnot(pthread_mutex_lock(&running_mtx),0,"masterworker, sighandler, lock");
+	running=1;
+	ec_isnot(pthread_mutex_unlock(&running_mtx),0,"masterworker, sighandler, unlock");
 	
 	//gestione segnali
 	sigset_t mask;
@@ -180,24 +190,16 @@ int masterworker(int argc, char *argv[], char *socket) {
 	
 	//thread detached per la gestione sincrona dei segnali
 	pthread_t sighandler_thread;
-	volatile int term=0;	//settato a 1 quando il masterworker cessa di inviare file
-	volatile int thread_num_change=0;
-	sighandler_arg_t sigarg;
-	sigarg.terminate=&term;
-	sigarg.thread_num_change=&thread_num_change;
-	sigarg.set=&mask;
-	ec_isnot(pthread_create(&sighandler_thread,NULL,&sighandler,&sigarg),0,"masterworker, pthread_create sighandler");
+	ec_isnot(pthread_create(&sighandler_thread,NULL,&sighandler,&mask),0,"masterworker, pthread_create sighandler");
 	ec_isnot(pthread_detach(sighandler_thread),0,"masterworker, pthread_detach");
 	
-	fprintf(stdout,"Segnali settati\n");
-	fflush(stdout);
-	
+	//dichiarazione ed iniaizlizzazione delle variabili default. Se necessario verranno sovrascritte
 	long workers=DEFAULT_N;
 	size_t queue_length=DEFAULT_Q;
 	long queue_delay=DEFAULT_T;
 	
-	//lista di directory passate con -d o all'interno delle suddette.
-	node_t *directories=NULL;		//lista di filename
+	node_t *directories=NULL;	//lista di directory passate con -d o all'interno delle suddette.
+	node_t *aux=directories;	//puntatore ausiliario
 	
 	/*Analisi delle opzioni*/
 	int opt;
@@ -251,7 +253,7 @@ int masterworker(int argc, char *argv[], char *socket) {
 				break;
 			}
 			//aggiunge la directory alla lista di directory in cui fare la ricerca di file
-			list_add(&directories,optarg);
+			list_add_head(&directories,optarg);
 			break;
 		
 		//introduce ritardo di inserimento in coda
@@ -273,31 +275,46 @@ int masterworker(int argc, char *argv[], char *socket) {
 
 	//creazione threadpool
 	
+	//inserimento file 
 	
 	//ricerca nelle directory -d
-	DIR *dir=opendir(
 	while(directories!=NULL) {
-		if(term)	//se bisogna chiudere anticipatamente il programma
+		if(!running) {	//se bisogna chiudere anticipatamente il programma
 			list_free(&directories);
-		else {
-			
+			break;	
 		}
+		DIR *dir=opendir(directories->name);
+		ec_is(dir,NULL,"masterthread, opendir");
+		struct dirent *file;
+		while((errno=0, file=readdir(dir))!=NULL) {
+			if(errno!=0) {
+				fprintf(stderr,"Errore nell'apertura di %s\n",directories->name);
+				ec_isnot(pthread_mutex_lock(&running_mtx),0,"masterworker, sighandler, lock");
+				running=0;
+				ec_isnot(pthread_mutex_unlock(&running_mtx),0,"masterworker, sighandler, unlock");
+				break;
+			}
+			if(!strncmp(file->d_name,".",2) || !strncmp(file->d_name,"..",3))	//controlla che non siano directory padre
+				continue;	//vai al prossimo file
+			else if(file->d_type==DT_DIR) {	//trovata directory
+				list_add_tail(&directories,file->d_name);	//aggiunta in coda per scorrimento breadth-first
+				fprintf(stdout,"trovata directory %s\n",file->d_name);
+			}
+			else if(file->d_type==DT_REG) {	//trovato file normale
+				fprintf(stdout,"trovato file %s\n",file->d_name);
+				//TODO gestione file normale. Crea thread timer?
+			}
+			else if(file->d_type==DT_UNKNOWN) {
+				perror("masterworker, file di tipo sconosciuto");
+				exit(EXIT_FAILURE);
+			}
+		}
+		aux=directories;
+		directories=directories->next;
+		free(aux);
 	}
 	
-	/*
-	//lancia thread che inserisce file nella lista di file
-	pthread_t file_finder;
-	filesearch_arg_t file_finder_arg
-	file_finder_arg.argind=optind;
-	file_finder_arg.argc=argc;
-	file_finder_arg.argv=argv;
-	file_finder_arg.files=files;
-	file_finder_arg.mtx=files_mtx;
-	file_finder_arg.directories=directories;
-	ec_isnot(pthread_create(&file_finder,NULL,&enqueue_files,&file_finder_args),0,"masterworker, pthread_create");
-	*/
-	
-	fprintf(stdout,"Numero thread: %ld\nLunghezza coda: %ld\nRitardo di inserimento: %ld\n",workers,queue_length,queue_delay);
+	fprintf(stdout,"Numero thread: %ld\nLunghezza coda: %ld\nRitardo di inserimento: %ld millisecondi\n",workers,queue_length, queue_delay);
 	int i;
 	fprintf(stdout,"File passati direttamente da linea di comando:\n");
 	for(i=optind;i<argc;i++) {
@@ -306,7 +323,6 @@ int masterworker(int argc, char *argv[], char *socket) {
 	fflush(stdout);
 	
 	//chiusura forzata del signal handler thread
-	ec_is(pthread_kill(sighandler_thread,SIGQUIT),0,"masterworker, pthread_kill di signal handler");
-	
-	return 0;	//operazione completata con successo
+	if(running) 
+		ec_is(pthread_kill(sighandler_thread,SIGQUIT),0,"masterworker, pthread_kill di signal handler");
 }

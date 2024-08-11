@@ -6,7 +6,7 @@ Questa sezione di codice contiene la parte del processo Collector
 #include <stdio.h>
 
 int main(int argc, char *argv[]) {
-	fprintf(stdout,"Collector viene eseguito\n");
+	fprintf(stdout,"---Collector Parte---\n");
 	fflush(stdout);
 	return 0;
 }
