@@ -91,10 +91,10 @@ void list_add_head(node_t **head, char *name) {
 	*head=new;
 }
 
-void list_add_tail(node_t **head, char *name) {
+void dirs_add(node_t **head, char *name, char *fulldirname) {
 	node_t *new=malloc(sizeof(node_t));
 	ec_is(new,NULL,"masterworker, listadd, malloc");
-	strncpy(new->name,name,MAX_NAMELENGTH);
+	snprintf(new->name,MAX_PATHNAME_LEN,"%s%s",fulldirname,name);	//il nome e' il pathname relativo
 	new->next=NULL;
 	node_t *aux=*head;
 	if(*head==NULL) {
@@ -297,8 +297,8 @@ void masterworker(int argc, char *argv[], char *socket) {
 			if(!strncmp(file->d_name,".",2) || !strncmp(file->d_name,"..",3))	//controlla che non siano directory padre
 				continue;	//vai al prossimo file
 			else if(file->d_type==DT_DIR) {	//trovata directory
-				list_add_tail(&directories,file->d_name);	//aggiunta in coda per scorrimento breadth-first
 				fprintf(stdout,"trovata directory %s\n",file->d_name);
+				dirs_add(&directories,file->d_name,directories->name);	//aggiunta in coda per scorrimento breadth-first
 			}
 			else if(file->d_type==DT_REG) {	//trovato file normale
 				fprintf(stdout,"trovato file %s\n",file->d_name);
