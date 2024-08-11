@@ -8,5 +8,5 @@
 	
 	//funzionamento del master worker
 	//int e' argc, char** e' argv, char* e' il nome della socket
-	int masterworker(int,char**,char*);
+	void masterworker(int,char**,char*);
 #endif
