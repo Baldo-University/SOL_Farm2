@@ -1,11 +1,9 @@
 /*
 Questa sezione di codice contiene il thread MasterWorker.
 Il masterworker prende i filename passati da linea di comando e le opzioni.
-Crea un thread che gestisca i segnali in modo sincrono (TODO)
-Crea un thread che inserisca i filepath nella coda di produzione(TODO)
-Crea il threadpool di worker (TODO)
+Dopodiche' crea il threadpool di worker che gira su un altro thread (TODO)
+IL thread del master prende i file e le directory passate e invia i file binari al threadpool (TODO)
 Thread timer per il ritardo di inserimento in coda? Avanzato.
-atexit() TODO
 */
 
 #include <dirent.h>
@@ -17,6 +15,7 @@ atexit() TODO
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "masterworker.h"
@@ -107,17 +106,16 @@ void dirs_add(node_t **head, char *name, char *fulldirname) {
 	aux->next=new;
 }
 
+/*
 //stampa lista (tenere?)
 void list_print(node_t *head) {
 	node_t *aux=head;
-	fprintf(stdout,"--- Lista di directory ---\n");
 	while(aux!=NULL) {
 		fprintf(stdout,"%s\n",aux->name);
 		aux=aux->next;
 	}
-	fprintf(stdout,"--- Fine lista directory ---\n");
 }
-
+*/
 //deallocazione memoria lista
 void list_free(node_t *head) {
 	node_t *aux=head;;
@@ -277,26 +275,36 @@ void masterworker(int argc, char *argv[], char *socket) {
 
 	//creazione threadpool
 	
+	
 	//imposta il ritardo di inserimento
+	struct timespec delay_struct, delay_rem;
+	delay_struct.tv_sec=queue_delay/1000;
+	delay_struct.tv_nsec=(queue_delay%1000)*1000000;
+	int sleep_result=0;
 	
 	//inserimento file passati da linea di comando TODO
+	
 	
 	//ricerca nelle directory -d
 	while(directories!=NULL) {
 		
-		//DEBUG printlist
-		list_print(directories);
-		
-		if(!running) {	//se bisogna chiudere anticipatamente il programma
+		//se bisogna chiudere anticipatamente il programma
+		if(!running) {
 			list_free(directories);
 			break;	
 		}
+		
+		//se bisogna cambiare il numero di worker
+		//TODO
+		
+		//apertura e ricerca nella directory corrente
 		DIR *dir=opendir(directories->name);
 		if(dir==NULL) {
 			fprintf(stderr,"Directory %s non trovata\n",directories->name);
 		}
 		struct dirent *file;
 		while((errno=0, file=readdir(dir))!=NULL) {
+		
 			if(errno!=0) {
 				fprintf(stderr,"Errore nell'apertura di %s\n",directories->name);
 				ec_isnot(pthread_mutex_lock(&running_mtx),0,"masterworker, mutex lock in dirsearch");
@@ -304,21 +312,43 @@ void masterworker(int argc, char *argv[], char *socket) {
 				ec_isnot(pthread_mutex_unlock(&running_mtx),0,"masterworker, mutex unlock in dirsearch");
 				break;
 			}
+			
 			if(!strncmp(file->d_name,".",2) || !strncmp(file->d_name,"..",3))	//controlla che non siano directory padre
 				continue;	//vai al prossimo file
+				
 			else if(file->d_type==DT_DIR) {	//trovata directory
 				fprintf(stdout,"trovata directory %s\n",file->d_name);
 			dirs_add(&directories,file->d_name,directories->name);	//aggiunta in coda per scorrimento breadth-first
 			}
+			
 			else if(file->d_type==DT_REG) {	//trovato file normale
-				fprintf(stdout,"trovato file %s\n",file->d_name);
-				//TODO gestione file normale. Crea thread timer?
+			
+				//ritardo di inserimento 1.0
+				if(sleep_result==0) {
+					sleep_result=nanosleep(&delay_struct,&delay_rem);
+					if(sleep_result==-1) {	//errore
+						if(errno==EINTR)	//verifica se nanosleep interrotto da segnale
+							errno=0;
+					}
+				}
+				else {
+					sleep_result=nanosleep(&delay_rem,&delay_rem);
+					if(sleep_result==-1) {
+						if(errno==EINTR)	//verifica se nanosleep interrotto da segnale
+							errno=0;
+					}
+				}
+				if(sleep_result!=0)		//nanosleep restituisce errore e non interrotto da segnale
+					continue;
+				
+				//invio file al threadpool
+				fprintf(stdout,"inserisco file %s\n",file->d_name);
 			}
-			else if(file->d_type==DT_UNKNOWN) {
+			
+			else if(file->d_type==DT_UNKNOWN)
 				perror("masterworker, file di tipo sconosciuto");
-				exit(EXIT_FAILURE);
-			}
 		}
+		
 		//chiusura directory
 		ec_is(closedir(dir),-1,"masterworker, closedir");
 		//libera la memoria e passa alla prossima directory

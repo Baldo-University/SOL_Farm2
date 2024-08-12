@@ -37,7 +37,6 @@ struct threadpool {
 	pthread_mutex_t task_mtx;	//mutex coda task
 	pthread_cond_t task_full;
 	pthread_cond_t task_empty;
-	
 };
 
 /*
