@@ -4,7 +4,8 @@ Il masterworker prende i filename passati da linea di comando e le opzioni.
 Crea un thread che gestisca i segnali in modo sincrono (TODO)
 Crea un thread che inserisca i filepath nella coda di produzione(TODO)
 Crea il threadpool di worker (TODO)
-Thread timer per il ritardo di inserimento in coda?
+Thread timer per il ritardo di inserimento in coda? Avanzato.
+atexit() TODO
 */
 
 #include <dirent.h>
@@ -27,7 +28,7 @@ Thread timer per il ritardo di inserimento in coda?
 //valore pari ad 1 quando parte, settato a zero solo quando viene terminato prima di terminare
 static int running;
 static pthread_mutex_t running_mtx=PTHREAD_MUTEX_INITIALIZER;
-//Contatore di segnali SIGUSR
+//Contatore di segnali SIGUSR, inizialmente zero
 static int thread_num_change;
 static pthread_mutex_t thread_num_mtx=PTHREAD_MUTEX_INITIALIZER;
 
@@ -59,9 +60,9 @@ static void *sighandler(void *arg) {
 		case SIGINT:
 		case SIGQUIT:
 		case SIGTERM:
-			ec_isnot(pthread_mutex_lock(&running_mtx),0,"masterworker, sighandler, lock");
+			ec_isnot(pthread_mutex_lock(&running_mtx),0,"masterworker, sighandler, lock running");
 			running=0;
-			ec_isnot(pthread_mutex_unlock(&running_mtx),0,"masterworker, sighandler, unlock");
+			ec_isnot(pthread_mutex_unlock(&running_mtx),0,"masterworker, sighandler, mutex unlock running");
 			return NULL;
 		
 		case SIGUSR1:	//incrementa di uno i worker
@@ -94,7 +95,7 @@ void list_add_head(node_t **head, char *name) {
 void dirs_add(node_t **head, char *name, char *fulldirname) {
 	node_t *new=malloc(sizeof(node_t));
 	ec_is(new,NULL,"masterworker, listadd, malloc");
-	snprintf(new->name,MAX_PATHNAME_LEN,"%s%s",fulldirname,name);	//il nome e' il pathname relativo
+	snprintf(new->name,MAX_PATHNAME_LEN,"%s/%s",fulldirname,name);	//il nome e' il pathname relativo
 	new->next=NULL;
 	node_t *aux=*head;
 	if(*head==NULL) {
@@ -106,13 +107,24 @@ void dirs_add(node_t **head, char *name, char *fulldirname) {
 	aux->next=new;
 }
 
-//deallocazione memoria lista
-void list_free(node_t **head) {
-	node_t *aux=*head;;
+//stampa lista (tenere?)
+void list_print(node_t *head) {
+	node_t *aux=head;
+	fprintf(stdout,"--- Lista di directory ---\n");
 	while(aux!=NULL) {
-		*head=(*head)->next;
+		fprintf(stdout,"%s\n",aux->name);
+		aux=aux->next;
+	}
+	fprintf(stdout,"--- Fine lista directory ---\n");
+}
+
+//deallocazione memoria lista
+void list_free(node_t *head) {
+	node_t *aux=head;;
+	while(aux!=NULL) {
+		head=head->next;
 		free(aux);
-		aux=*head;
+		aux=head;
 	}
 }
 
@@ -135,15 +147,6 @@ void file_search(int argc, char *argv[]) {
 	}
 }
 */
-
-/*
-//Ricerca ricorsiva delle directory passate con -d
-//Argomenti: lista directories e coda task
-void dir_search() {
-	
-}
-*/
-
 /*
 //Aggiunta di file binari alla lista appropriata
 static void *enqueue_file(filesearch_arg *thread_args) {
@@ -166,9 +169,8 @@ static void *enqueue_file(filesearch_arg *thread_args) {
 void masterworker(int argc, char *argv[], char *socket) {
 	fprintf(stderr,"---MasterWorker Parte---\n");
 	
-	ec_isnot(pthread_mutex_lock(&running_mtx),0,"masterworker, sighandler, lock");
 	running=1;
-	ec_isnot(pthread_mutex_unlock(&running_mtx),0,"masterworker, sighandler, unlock");
+	thread_num_change=0;
 	
 	//gestione segnali
 	sigset_t mask;
@@ -275,30 +277,38 @@ void masterworker(int argc, char *argv[], char *socket) {
 
 	//creazione threadpool
 	
-	//inserimento file 
+	//imposta il ritardo di inserimento
+	
+	//inserimento file passati da linea di comando TODO
 	
 	//ricerca nelle directory -d
 	while(directories!=NULL) {
+		
+		//DEBUG printlist
+		list_print(directories);
+		
 		if(!running) {	//se bisogna chiudere anticipatamente il programma
-			list_free(&directories);
+			list_free(directories);
 			break;	
 		}
 		DIR *dir=opendir(directories->name);
-		ec_is(dir,NULL,"masterthread, opendir");
+		if(dir==NULL) {
+			fprintf(stderr,"Directory %s non trovata\n",directories->name);
+		}
 		struct dirent *file;
 		while((errno=0, file=readdir(dir))!=NULL) {
 			if(errno!=0) {
 				fprintf(stderr,"Errore nell'apertura di %s\n",directories->name);
-				ec_isnot(pthread_mutex_lock(&running_mtx),0,"masterworker, sighandler, lock");
+				ec_isnot(pthread_mutex_lock(&running_mtx),0,"masterworker, mutex lock in dirsearch");
 				running=0;
-				ec_isnot(pthread_mutex_unlock(&running_mtx),0,"masterworker, sighandler, unlock");
+				ec_isnot(pthread_mutex_unlock(&running_mtx),0,"masterworker, mutex unlock in dirsearch");
 				break;
 			}
 			if(!strncmp(file->d_name,".",2) || !strncmp(file->d_name,"..",3))	//controlla che non siano directory padre
 				continue;	//vai al prossimo file
 			else if(file->d_type==DT_DIR) {	//trovata directory
 				fprintf(stdout,"trovata directory %s\n",file->d_name);
-				dirs_add(&directories,file->d_name,directories->name);	//aggiunta in coda per scorrimento breadth-first
+			dirs_add(&directories,file->d_name,directories->name);	//aggiunta in coda per scorrimento breadth-first
 			}
 			else if(file->d_type==DT_REG) {	//trovato file normale
 				fprintf(stdout,"trovato file %s\n",file->d_name);
@@ -309,6 +319,9 @@ void masterworker(int argc, char *argv[], char *socket) {
 				exit(EXIT_FAILURE);
 			}
 		}
+		//chiusura directory
+		ec_is(closedir(dir),-1,"masterworker, closedir");
+		//libera la memoria e passa alla prossima directory
 		aux=directories;
 		directories=directories->next;
 		free(aux);
@@ -321,8 +334,8 @@ void masterworker(int argc, char *argv[], char *socket) {
 		fprintf(stdout,"%s\n",argv[i]);
 	}
 	fflush(stdout);
-	
+	list_free(directories);
 	//chiusura forzata del signal handler thread
 	if(running) 
-		ec_is(pthread_kill(sighandler_thread,SIGQUIT),0,"masterworker, pthread_kill di signal handler");
+		ec_isnot(pthread_kill(sighandler_thread,SIGQUIT),0,"masterworker, pthread_kill di signal handler");
 }
