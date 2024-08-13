@@ -1,10 +1,4 @@
-/*
-Questa sezione di codice contiene il thread MasterWorker.
-Il masterworker prende i filename passati da linea di comando e le opzioni.
-Dopodiche' crea il threadpool di worker che gira su un altro thread (TODO)
-IL thread del master prende i file e le directory passate e invia i file binari al threadpool (TODO)
-Thread timer per il ritardo di inserimento in coda? Avanzato.
-*/
+/*SCRIVERE DESCRIZIONE*/
 
 #include <dirent.h>
 #include <errno.h>
@@ -36,6 +30,16 @@ typedef struct node {
 	char name[MAX_PATHNAME_LEN];	//filename
 	struct node *next;			//prossimo elemento di lista
 } node_t;
+
+//argomenti del thread che effettua la ricerca dei file
+typedef struct file_finder_arg {
+	node_t *directories;	//lista delle directory
+	struct timespec delay;	//ritardo di inserimento
+	int argv;				//numero di argomenti
+	char **args;			//argomenti passati da linea di comando
+	int optind;				//indice di argv dei file in seguito alla getopt
+	threadpool_t pool;		//threadpool
+} file_finder_args;
 
 //gestore sincrono di segnali
 static void *sighandler(void *arg) {
@@ -123,6 +127,88 @@ void list_free(node_t *head) {
 		head=head->next;
 		free(aux);
 		aux=head;
+	}
+}
+
+//thread che individua i file binari da linea di comando e da directory
+static void *filefinder(void *arg) {
+	file_finder_args *args=(file_finder_args*)arg;
+	node_t *directories=args->directories;
+	struct timespec delay=args->delay;
+	
+	//ricerca nelle directory -d
+	while(directories!=NULL) {
+		
+		//se bisogna chiudere anticipatamente il programma
+		if(!running) {
+			list_free(directories);
+			break;	
+		}
+		
+		//se bisogna cambiare il numero di worker
+		//TODO
+		
+		//apertura e ricerca nella directory corrente
+		DIR *dir=opendir(directories->name);
+		if(dir==NULL)
+			fprintf(stderr,"Directory %s non trovata\n",directories->name);
+		struct dirent *file;
+		while((errno=0, file=readdir(dir))!=NULL) {
+			//controllo se sono arrivati segnali di arresto
+			if(!running) {
+				//libera lo spazio delle directory successive, quella corrente viene liberata dopo il while
+				list_free(directories->next); 
+				break;
+			}
+			//controllo errno
+			if(errno!=0) {
+				fprintf(stderr,"Errore nell'apertura di %s\n",directories->name);
+				ec_isnot(pthread_mutex_lock(&running_mtx),0,"masterworker, mutex lock in dirsearch");
+				running=0;
+				ec_isnot(pthread_mutex_unlock(&running_mtx),0,"masterworker, mutex unlock in dirsearch");
+				break;
+			}
+			
+			if(!strncmp(file->d_name,".",2) || !strncmp(file->d_name,"..",3))	//controlla che non siano directory padre
+				continue;	//vai al prossimo file
+				
+			else if(file->d_type==DT_DIR) {	//trovata directory
+				fprintf(stdout,"trovata directory %s\n",file->d_name);
+			dirs_add(&directories,file->d_name,directories->name);	//aggiunta in coda per scorrimento breadth-first
+			}
+			
+			else if(file->d_type==DT_REG) {	//trovato file normale
+				//ritardo di inserimento (versione basic)
+				if(sleep_result==0) {
+					sleep_result=nanosleep(&delay_struct,&delay_rem);
+					if(sleep_result==-1) {	//errore
+						if(errno==EINTR)	//verifica se nanosleep interrotto da segnale
+							errno=0;
+					}
+				}
+				else {
+					sleep_result=nanosleep(&delay_rem,&delay_rem);
+					if(sleep_result==-1) {
+						if(errno==EINTR)	//verifica se nanosleep interrotto da segnale
+							errno=0;
+					}
+				}
+				if(sleep_result!=0)		//nanosleep restituisce errore e non interrotto da segnale
+					continue;
+				//invio file al threadpool
+				fprintf(stdout,"inserisco file %s\n",file->d_name);
+			}
+			
+			else if(file->d_type==DT_UNKNOWN)
+				perror("masterworker, file di tipo sconosciuto");
+		}
+		
+		//chiusura directory
+		ec_is(closedir(dir),-1,"masterworker, closedir");
+		//libera la memoria e passa alla prossima directory. Fine qui se non ci sono altre directory
+		aux=directories;
+		directories=directories->next;
+		free(aux);
 	}
 }
 
@@ -274,97 +360,37 @@ void masterworker(int argc, char *argv[], char *socket) {
 	}
 
 	//creazione threadpool
-	
+	threadpool_t pool=initialize_pool(workers,queue_length,&socket);
+	ec_is(pool,NULL,"masterworker, initialize_pool");
 	
 	//imposta il ritardo di inserimento
 	struct timespec delay_struct, delay_rem;
 	delay_struct.tv_sec=queue_delay/1000;
 	delay_struct.tv_nsec=(queue_delay%1000)*1000000;
-	int sleep_result=0;
 	
-	//inserimento file passati da linea di comando TODO
-	
-	
-	//ricerca nelle directory -d
-	while(directories!=NULL) {
-		
-		//se bisogna chiudere anticipatamente il programma
-		if(!running) {
-			list_free(directories);
-			break;	
-		}
-		
-		//se bisogna cambiare il numero di worker
-		//TODO
-		
-		//apertura e ricerca nella directory corrente
-		DIR *dir=opendir(directories->name);
-		if(dir==NULL) {
-			fprintf(stderr,"Directory %s non trovata\n",directories->name);
-		}
-		struct dirent *file;
-		while((errno=0, file=readdir(dir))!=NULL) {
-		
-			if(errno!=0) {
-				fprintf(stderr,"Errore nell'apertura di %s\n",directories->name);
-				ec_isnot(pthread_mutex_lock(&running_mtx),0,"masterworker, mutex lock in dirsearch");
-				running=0;
-				ec_isnot(pthread_mutex_unlock(&running_mtx),0,"masterworker, mutex unlock in dirsearch");
-				break;
-			}
-			
-			if(!strncmp(file->d_name,".",2) || !strncmp(file->d_name,"..",3))	//controlla che non siano directory padre
-				continue;	//vai al prossimo file
-				
-			else if(file->d_type==DT_DIR) {	//trovata directory
-				fprintf(stdout,"trovata directory %s\n",file->d_name);
-			dirs_add(&directories,file->d_name,directories->name);	//aggiunta in coda per scorrimento breadth-first
-			}
-			
-			else if(file->d_type==DT_REG) {	//trovato file normale
-			
-				//ritardo di inserimento 1.0
-				if(sleep_result==0) {
-					sleep_result=nanosleep(&delay_struct,&delay_rem);
-					if(sleep_result==-1) {	//errore
-						if(errno==EINTR)	//verifica se nanosleep interrotto da segnale
-							errno=0;
-					}
-				}
-				else {
-					sleep_result=nanosleep(&delay_rem,&delay_rem);
-					if(sleep_result==-1) {
-						if(errno==EINTR)	//verifica se nanosleep interrotto da segnale
-							errno=0;
-					}
-				}
-				if(sleep_result!=0)		//nanosleep restituisce errore e non interrotto da segnale
-					continue;
-				
-				//invio file al threadpool
-				fprintf(stdout,"inserisco file %s\n",file->d_name);
-			}
-			
-			else if(file->d_type==DT_UNKNOWN)
-				perror("masterworker, file di tipo sconosciuto");
-		}
-		
-		//chiusura directory
-		ec_is(closedir(dir),-1,"masterworker, closedir");
-		//libera la memoria e passa alla prossima directory
-		aux=directories;
-		directories=directories->next;
-		free(aux);
-	}
-	
+	//lancia il thread che inserisce i file in coda
+	pthread_t file_finder_thread;
+	ec_isnot(pthread_create(),0,"masterworker, pthread_create file finder thread");
+
+	/*
 	fprintf(stdout,"Numero thread: %ld\nLunghezza coda: %ld\nRitardo di inserimento: %ld millisecondi\n",workers,queue_length, queue_delay);
 	int i;
 	fprintf(stdout,"File passati direttamente da linea di comando:\n");
-	for(i=optind;i<argc;i++) {
+	for(i=optind;i<argc;i++)
 		fprintf(stdout,"%s\n",argv[i]);
-	}
 	fflush(stdout);
 	list_free(directories);
+	*/
+	/*
+	//creazione nworkeratexit
+	FILE *workers_file=fopen("nworkeratexit.txt","w");
+	if(workers_file==NULL)
+		perror("masterworker, fopen nworkeratexit");
+	else {
+		fprintf(workers_file,"%d\n",);	//inserisci il numero di thread alla fine / INCOMPLETO
+		fclose(workers_file);
+	}
+	*/
 	//chiusura forzata del signal handler thread
 	if(running) 
 		ec_isnot(pthread_kill(sighandler_thread,SIGQUIT),0,"masterworker, pthread_kill di signal handler");

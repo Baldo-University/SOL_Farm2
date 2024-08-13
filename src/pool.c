@@ -18,62 +18,10 @@ usa per inserire task in coda.
 //lunghezza max di stringa aumentata di 1 per accomodare il carattere di terminazione
 #define MAX_PATHNAME_LEN 1+MAX_NAMELENGTH
 
-//linked list di thread worker
-typedef struct workerlist {
-	pthread_t worker;
-	struct workerlist *next;
-}	workerlist_t;
 
-//Struttura principale del threadpool
-struct threadpool {
-	workerlist *workers;		//puntatore di testa alla lista dei worker
-	workerlist *workers_tail;	//puntatore di coda alla suddetta lista
-	size_t num_threads;			//numero totale di worker
-	size_t add_threads;			//worker da aggiungere (chiamata SIGUSR1)
-	size_t remove_threads;		//worker da rimuovere (chiamata SIGUSR2)
-	char **tasks;				//coda di produzione di tipo circolare
-	int tasks_head;				//indice task in testa
-	int tasks_tail;				//indice task in coda
-	pthread_mutex_t task_mtx;	//mutex coda task
-	pthread_cond_t task_full;
-	pthread_cond_t task_empty;
-};
 
-/*
-//per la coda di produzione
-pthread_mutex_t task_mtx=PTHREAD_MUTEX_INITIALIZER;	//mutex coda task
-pthread_cond_t task_full=PTHREAD_COND_INITIALIZER;	//coda task piena
-pthread_cond_t task_empty=PTHREAD_COND_INITIALIZER;	//coda task vuota
-*/
-
-//Funzionamento base del threadpool 
-static void *pool_function(size_t pool_size, size_t queue_len, char* socket) {
-	fprintf(stderr,"Threadpool parte\n");
-	
-	//controllo valori validi
-	if(pool_size<=0)
-		return -1;
-	if(queue_len<=0)
-		return -1;
-	
-	//crea threadpool
-	threadpool *pool=(threadpool*)malloc(sizeof(threadpool));
-	if(pool==NULL) {
-		fprintf(stderr,"Threadpool: non e' stato possibile allocare memoria al threadpool.\n");
-		return;
-	}
-	
-	//crea coda di produzione
-	char **task_queue;
-	ec_is(task_queue=malloc(queue_len*sizeof(char*)),NULL,"pool, malloc coda 1");
-	int i;
-	for(i=0;i<queue_len;i++)
-		task_queue[i]=ec_is(malloc(FILENAME_LEN*sizeof(char)),NULL,"pool, malloc coda 2");
-	int front=-1;
-	int rear=-1;
-	
-	
-	//inizializzazione worker
+//funzionamento del singolo thread
+static void *thread_func(void *arg) {
 	
 }
 
@@ -88,16 +36,55 @@ void destroy_pool() {
 }
 
 //Inserisce task in coda
-void enqueue_task(char*) {
+void enqueue_task(char* filename) {
 	
 }
 
 //Aggiunge thread worker
-void add_worker() {
+void add_workers(long num) {
 
 }
 
 //Rimuove thread worker
 void remove_worker() {
 
+}
+
+threadpool_t *initialize_pool(long pool_size, size_t queue_len, char* socket) {	
+	//controllo valori validi
+	if(pool_size<=0)
+		return NULL;
+	if(queue_len<=0)
+		return NULL;
+	
+	//crea threadpool
+	threadpool_t *pool=(threadpool_t*)malloc(sizeof(threadpool));
+	if(pool==NULL) {
+		fprintf(stderr,"Threadpool: non e' stato possibile allocare memoria al threadpool.\n");
+		return NULL;
+	}
+	//inizializzazione valori di base
+	pool->initialized=0;
+	pool->workers_head=NULL;
+	pool->workers_tail=NULL;
+	pool->num_threads=0;
+	pool->modify_thread_num=0;
+	//inizializzazione mutex e cond
+	pthread_mutex_init(&pool->task_mtx,NULL);
+	pthread_cond_init(&pool->task_full,NULL);
+	
+	pool->run=1;
+	
+	//crea coda di produzione
+	char **task_queue;
+	ec_is(task_queue=malloc(queue_len*sizeof(char*)),NULL,"pool, malloc coda 1");
+	int i;
+	for(i=0;i<queue_len;i++)
+		task_queue[i]=ec_is(malloc(MAX_PATHNAME_LEN*sizeof(char)),NULL,"pool, malloc coda 2");
+	int front=-1;
+	int rear=-1;
+	
+	add_workers(pool_size);
+	
+	return pool;
 }
