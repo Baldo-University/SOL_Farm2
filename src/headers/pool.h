@@ -1,13 +1,31 @@
 #ifndef THREADPOOL
 	#define THREADPOOL
 	
-	typedef struct threadpool threadpool;
+	//linked list di thread worker
+	typedef struct workerlist {
+		pthread_t worker;
+		struct workerlist *next;
+	} workerlist_t;
 	
-	//crea il threadpool
-	//size_t: numero iniziale di worker
-	//char*: nome socket
-	//return: numero di worker
-	int pool_function(size_t, size_t, char*);
+	//Struttura principale del threadpool
+	typedef struct threadpool {
+		volatile unsigned short initialized;	//coda inizializzata o no
+		_Atomic unsigned short running;			//coda attiva o no
+		workerlist *workers_head;	//puntatore di testa alla lista dei worker
+		workerlist *workers_tail;	//puntatore di coda alla suddetta lista
+		size_t num_threads;			//numero totale di worker
+		size_t modify_thread_num;	//worker da aggiungere o rimuovere
+		unsigned int threadID;		//singolo identificatore dei thread
+		char **tasks;				//coda di produzione di tipo circolare
+		int tasks_head;				//indice task in testa
+		int tasks_tail;				//indice task in coda
+		pthread_mutex_t task_mtx;	//mutex coda task
+		pthread_cond_t task_full;	//condizione coda piena
+	} threadpool_t;
+
+	//inizializzazione threadpool
+	//param: numero di worker iniziali, lunghezza coda, socket
+	threadpool_t initialize_pool(long, size_t, char*);
 	
 	//attende che il threadpool finisca di elaborare i task passati
 	void await_pool_completion();
