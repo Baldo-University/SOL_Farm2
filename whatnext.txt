@@ -1,0 +1,7 @@
+PROSSIMI PASSI DEL PROGETTO
+-Riscrivere il filefinder in masterworker
+Dopo getopt(), MW crea il threadpool e lancia n thread worker. Questi si connettono a Collector e consumano i task.
+MW e TP girano sullo stesso thread. Pertanto filefinder viene eseguito dopo la creazione del TP senza creare altri thread.
+Note sulla gestione dei segnali: finche' filefinder rimane attivo sighandler ci indica quanti thread devono cambiare nel
+TP e prima di inviare i task si avverte il TP invocando una funzione change_workers() da scrivere. Finito filefinder, se
+il TP e' ancora attivo mettiamo una funzione 
