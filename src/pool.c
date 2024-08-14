@@ -18,8 +18,6 @@ usa per inserire task in coda.
 //lunghezza max di stringa aumentata di 1 per accomodare il carattere di terminazione
 #define MAX_PATHNAME_LEN 1+MAX_NAMELENGTH
 
-
-
 //funzionamento del singolo thread
 static void *thread_func(void *arg) {
 	
@@ -78,7 +76,7 @@ threadpool_t *initialize_pool(long pool_size, size_t queue_len, char* socket) {
 	//crea coda di produzione
 	char **task_queue;
 	ec_is(task_queue=malloc(queue_len*sizeof(char*)),NULL,"pool, malloc coda 1");
-	int i;
+	long i;
 	for(i=0;i<queue_len;i++)
 		task_queue[i]=ec_is(malloc(MAX_PATHNAME_LEN*sizeof(char)),NULL,"pool, malloc coda 2");
 	int front=-1;
