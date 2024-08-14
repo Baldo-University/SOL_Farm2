@@ -37,7 +37,7 @@
 	void enqueue_task(char*);
 	
 	//Aggiunge thread worker
-	void add_worker();
+	void add_workers(long);
 	
 	//Rimuove thread worker
 	void remove_worker();
