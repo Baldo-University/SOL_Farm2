@@ -29,8 +29,38 @@ void await_pool_completion() {
 }
 
 //distrugge il threadpool
-void destroy_pool() {
-
+void destroy_pool(threadpool_t *pool) {
+	if(pool==NULL || !pool->initialized) {
+		fprintf(stderr,"pool, destroy_pool su threadpool non inizializzato\n");
+		return;
+	}
+	pool->running=0;
+	
+	int res;
+	
+	//ferma i worker TODO
+	
+	//dealloca la coda
+	int i;
+	size_t dim=pool->queue_size;
+	if(pool->task_queue==NULL)
+		fprintf(stderr,"pool, destroy_pool trova coda dei task non inizializzata\n");
+	else {
+		for(i=0;i<dim;i++)
+			free(pool->task_queue[i]);
+		free(pool->task_queue);
+	}
+	
+	//distruggi mutex e cond
+	res=pthread_mutex_destroy(&pool->worker_mtx);
+	res=pthread_mutex_destroy(&pool->task_mtx);
+	if(res)
+		fprintf(stderr,"pool, destroy_pool. Uno o piu' mutex non sono stati distrutti\n");
+	res=pthread_cond_destroy(&pool->worker_cond);
+	res=pthread_cond_destroy(&pool->task_full);
+	if(res)
+		fprintf(stderr,"pool, destroy_pool. Uno o piu' cond non sono state distrutte\n");
+	free(pool);
 }
 
 //Inserisce task in coda
@@ -61,26 +91,28 @@ threadpool_t *initialize_pool(long pool_size, size_t queue_len, char* socket) {
 		fprintf(stderr,"Threadpool: non e' stato possibile allocare memoria al threadpool.\n");
 		return NULL;
 	}
-	//inizializzazione valori di base
-	pool->initialized=0;
-	pool->workers_head=NULL;
-	pool->workers_tail=NULL;
-	pool->num_threads=0;
-	pool->modify_thread_num=0;
+	memset(pool,0,sizeof(*pool));
 	//inizializzazione mutex e cond
+	pthread_mutex_init(&pool->worker_mtx,NULL);
+	pthread_cond_init(&pool->worker_cond,NULL);
 	pthread_mutex_init(&pool->task_mtx,NULL);
 	pthread_cond_init(&pool->task_full,NULL);
 	
-	pool->run=1;
+	pool->running=1;
 	
 	//crea coda di produzione
-	char **task_queue;
-	ec_is(task_queue=malloc(queue_len*sizeof(char*)),NULL,"pool, malloc coda 1");
-	long i;
+	char **task_queue=malloc(queue_len*sizeof(char*));
+	if(task_queue==NULL) {
+		perror("pool, malloc coda");
+		destroy_pool(&pool);
+		return NULL;
+	}
+	size_t i;
 	for(i=0;i<queue_len;i++)
 		task_queue[i]=ec_is(malloc(MAX_PATHNAME_LEN*sizeof(char)),NULL,"pool, malloc coda 2");
-	int front=-1;
-	int rear=-1;
+	pool->queue_size=queue_len;
+	pool->tasks_head=-1;
+	pool->tasks_tail=-1;
 	
 	add_workers(pool_size);
 	
