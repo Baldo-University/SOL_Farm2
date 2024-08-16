@@ -9,18 +9,22 @@
 	
 	//Struttura principale del threadpool
 	typedef struct threadpool {
-		volatile unsigned short initialized;	//coda inizializzata o no
+		volatile unsigned short initialized;	//coda inizializzata (per attesa attiva che i thread siano pronti)
 		_Atomic unsigned short running;			//coda attiva o no
-		workerlist *workers_head;	//puntatore di testa alla lista dei worker
-		workerlist *workers_tail;	//puntatore di coda alla suddetta lista
-		size_t num_threads;			//numero totale di worker
-		size_t modify_thread_num;	//worker da aggiungere o rimuovere
-		unsigned int threadID;		//singolo identificatore dei thread
-		char **tasks;				//coda di produzione di tipo circolare
-		int tasks_head;				//indice task in testa
-		int tasks_tail;				//indice task in coda
-		pthread_mutex_t task_mtx;	//mutex coda task
-		pthread_cond_t task_full;	//condizione coda piena
+		workerlist *workers_head;				//puntatore di testa alla lista dei worker
+		workerlist *workers_tail;				//puntatore di coda alla suddetta lista
+		unsigned int num_threads;				//numero totale di worker, minimo 1
+		int modify_thread_num;					//worker da aggiungere o rimuovere
+		volatile unsigned int waiting_workers;	//quanti thread sono in attesa di task
+		unsigned int threadID;					//singolo identificatore dei thread
+		pthread_mutex_t worker_mtx;				//worker attivo o idling
+		pthread_cond_t worker_cond;				//condizione relativa al suddetto mutex
+		char **tasks;							//coda di produzione di tipo circolare
+		size_t queue_size;						//lunghezza della coda
+		int tasks_head;							//indice task in testa
+		int tasks_tail;							//indice task in coda
+		pthread_mutex_t task_mtx;				//mutex coda task
+		pthread_cond_t task_full;				//condizione coda piena
 	} threadpool_t;
 
 	//inizializzazione threadpool
