@@ -69,8 +69,21 @@ void enqueue_task(char* filename) {
 }
 
 //Aggiunge thread worker
-void add_workers(long num) {
-
+int add_workers(threadpool_t *pool, long num_threads) {
+	if(pool==NULL) {
+		fprintf(stderr,"pool, add_workers, pool non inizializzato\n");
+		return 1;
+	}
+	if(pool->running==0) {
+		fprintf(stderr,"pool, add_workers, pool non sta girando\n");
+		return 2;
+	}
+	if(num_threads<1) {
+		fprintf(stderr,"pool, add_workers, numero di thread non valido\n");
+		return 3;
+	}
+	
+	if(pthread_mutex_lock()
 }
 
 //Rimuove thread worker
@@ -104,7 +117,7 @@ threadpool_t *initialize_pool(long pool_size, size_t queue_len, char* socket) {
 	char **task_queue=malloc(queue_len*sizeof(char*));
 	if(task_queue==NULL) {
 		perror("pool, malloc coda");
-		destroy_pool(&pool);
+		destroy_pool(pool);
 		return NULL;
 	}
 	size_t i;
@@ -114,7 +127,12 @@ threadpool_t *initialize_pool(long pool_size, size_t queue_len, char* socket) {
 	pool->tasks_head=-1;
 	pool->tasks_tail=-1;
 	
-	add_workers(pool_size);
+	int res;
+	res=add_workers(pool,pool_size);
+	if(res!=0) {
+		destroy_pool(pool);
+		return NULL;
+	}
 	
 	return pool;
 }
