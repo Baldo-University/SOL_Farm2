@@ -20,7 +20,18 @@ usa per inserire task in coda.
 
 //funzionamento del singolo thread
 static void *thread_func(void *arg) {
+	threadpool_t *pool=(threadpool_t)arg;
+	pthread_mutex_lock(&pool->task_mtx);
+	unsigned int id=++pool->threadID;
+	pthread_mutex_unlock(&pool->task_mtx);
 	
+	while(pool->running) {
+		pthread_mutex_lock(&pool->task_mtx);
+		if(pool->modify_thread_num<0) {	//rimuovere uno o piu' thread
+			pthread_mutex_lock(&pool->worker_mtx);
+			
+		}
+	}
 }
 
 //attende che il threadpool finisca di elaborare i task passati
@@ -69,7 +80,7 @@ void enqueue_task(char* filename) {
 }
 
 //Aggiunge thread worker
-int add_workers(threadpool_t *pool, long num_threads) {
+int add_workers(threadpool_t *pool, long num) {
 	if(pool==NULL) {
 		fprintf(stderr,"pool, add_workers, pool non inizializzato\n");
 		return 1;
@@ -78,12 +89,41 @@ int add_workers(threadpool_t *pool, long num_threads) {
 		fprintf(stderr,"pool, add_workers, pool non sta girando\n");
 		return 2;
 	}
-	if(num_threads<1) {
+	if(num<1) {
 		fprintf(stderr,"pool, add_workers, numero di thread non valido\n");
 		return 3;
 	}
 	
-	if(pthread_mutex_lock()
+	pthread_mutex_lock(&pool->worker_mtx)!=0);
+	pool->num_threads+=num;
+	pthread_mutex_unlock(&pool->worker_mtx);
+	
+	int i,res;	//valori ausiliari
+	for(i=0;i<num;i++) {
+		workerlist *new_worker=(workerlist*)malloc(sizeof(workerlist));
+		if(new_worker==NULL) {
+			fprintf(stderr,"pool, impossibile allocare memoria al thread\n");
+			pthread_mutex_lock(&pool->worker_mtx)!=0);
+			pool->num_threads--;
+			pthread_mutex_unlock(&pool->worker_mtx);
+		}
+		new_worker->next=NULL;
+		res=pthread_create(&new_worker->thread,NULL,thread_func,(void*)pool);
+		if(res) {
+			fprintf(stderr,"pool, add_workers, errore in pthread_create() del thread %d, errore %d\n",i+1,res);
+			pthread_mutex_lock(&pool->worker_mtx)!=0);
+			pool->num_threads--;
+			pthread_mutex_unlock(&pool->worker_mtx);
+		}
+		else {
+			if(pool->worker_tail==NULL)	//primo thread
+				pool->worker_head = pool->worker_tail = new_worker;
+			else
+				pool->worker_tail->next=new_worker;
+			pool->worker_tail=new_worker;
+		}
+	}
+	return 0;
 }
 
 //Rimuove thread worker
@@ -99,12 +139,14 @@ threadpool_t *initialize_pool(long pool_size, size_t queue_len, char* socket) {
 		return NULL;
 	
 	//crea threadpool
-	threadpool_t *pool=(threadpool_t*)malloc(sizeof(threadpool));
+	threadpool_t *pool=(threadpool_t*)malloc(sizeof(threadpool_t));
 	if(pool==NULL) {
 		fprintf(stderr,"Threadpool: non e' stato possibile allocare memoria al threadpool.\n");
 		return NULL;
 	}
 	memset(pool,0,sizeof(*pool));
+	pool->worker_head=NULL;
+	pool->worker_tail=NULL;
 	//inizializzazione mutex e cond
 	pthread_mutex_init(&pool->worker_mtx,NULL);
 	pthread_cond_init(&pool->worker_cond,NULL);
@@ -129,10 +171,12 @@ threadpool_t *initialize_pool(long pool_size, size_t queue_len, char* socket) {
 	
 	int res;
 	res=add_workers(pool,pool_size);
-	if(res!=0) {
+	if(res) {
 		destroy_pool(pool);
 		return NULL;
 	}
+	
+	while(!pool->initialized);
 	
 	return pool;
 }
