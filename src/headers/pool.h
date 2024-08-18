@@ -11,8 +11,8 @@
 	typedef struct threadpool {
 		volatile unsigned short initialized;	//coda inizializzata (per attesa attiva che i thread siano pronti)
 		_Atomic unsigned short running;			//coda attiva o no
-		workerlist *workers_head;				//puntatore di testa alla lista dei worker
-		workerlist *workers_tail;				//puntatore di coda alla suddetta lista
+		workerlist *worker_head;				//puntatore di testa alla lista dei worker
+		workerlist *worker_tail;				//puntatore di coda alla suddetta lista
 		unsigned int num_threads;				//numero totale di worker, minimo 1
 		int modify_thread_num;					//worker da aggiungere o rimuovere
 		volatile unsigned int waiting_workers;	//quanti thread sono in attesa di task
@@ -25,6 +25,7 @@
 		int tasks_tail;							//indice task in coda
 		pthread_mutex_t task_mtx;				//mutex coda task
 		pthread_cond_t task_full;				//condizione coda piena
+		char *socket;							//socket a cui si devono collegare i worker
 	} threadpool_t;
 
 	//inizializzazione threadpool
@@ -41,7 +42,7 @@
 	void enqueue_task(char*);
 	
 	//Aggiunge thread worker
-	void add_workers(long);
+	int add_workers(threadpool_t*,long);
 	
 	//Rimuove thread worker
 	void remove_worker();
