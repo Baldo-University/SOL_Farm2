@@ -9,8 +9,10 @@ Il threadpool mantiene la coda di produzione e in questo file sono contenute le 
 usa per inserire task in coda.
 */
 
-#include <stdio.h>
 #include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "pool.h"
 #include "utils.h"
@@ -20,6 +22,7 @@ usa per inserire task in coda.
 
 //funzionamento del singolo thread
 static void *thread_func(void *arg) {
+	fprintf(stdout,"Inizializzazione thread\n");
 	threadpool_t *pool=(threadpool_t)arg;
 	pthread_mutex_lock(&pool->task_mtx);
 	unsigned int id=++pool->threadID;
@@ -72,6 +75,7 @@ void destroy_pool(threadpool_t *pool) {
 	if(res)
 		fprintf(stderr,"pool, destroy_pool. Uno o piu' cond non sono state distrutte\n");
 	free(pool);
+	*/
 }
 
 //Inserisce task in coda
@@ -101,7 +105,7 @@ int add_workers(threadpool_t *pool, long num) {
 	int i,res;	//valori ausiliari
 	for(i=0;i<num;i++) {
 		workerlist *new_worker=(workerlist*)malloc(sizeof(workerlist));
-		if(new_worker==NULL) {
+		if(new_worker==NULL) {	//controllo errore malloc
 			fprintf(stderr,"pool, impossibile allocare memoria al thread\n");
 			pthread_mutex_lock(&pool->worker_mtx)!=0);
 			pool->num_threads--;
@@ -109,7 +113,7 @@ int add_workers(threadpool_t *pool, long num) {
 		}
 		new_worker->next=NULL;
 		res=pthread_create(&new_worker->thread,NULL,thread_func,(void*)pool);
-		if(res) {
+		if(res) {	//controllo errore pthread_create
 			fprintf(stderr,"pool, add_workers, errore in pthread_create() del thread %d, errore %d\n",i+1,res);
 			pthread_mutex_lock(&pool->worker_mtx)!=0);
 			pool->num_threads--;
@@ -131,7 +135,8 @@ void remove_worker() {
 
 }
 
-threadpool_t *initialize_pool(long pool_size, size_t queue_len, char* socket) {	
+threadpool_t *initialize_pool(long pool_size, size_t queue_len, char* socket) {
+	fprintf(stdout,"Inizializzazione threadpool\n");
 	//controllo valori validi
 	if(pool_size<=0)
 		return NULL;
@@ -141,12 +146,18 @@ threadpool_t *initialize_pool(long pool_size, size_t queue_len, char* socket) {
 	//crea threadpool
 	threadpool_t *pool=(threadpool_t*)malloc(sizeof(threadpool_t));
 	if(pool==NULL) {
-		fprintf(stderr,"Threadpool: non e' stato possibile allocare memoria al threadpool.\n");
+		fprintf(stderr,"pool, initialize_pool, non e' stato possibile allocare memoria al threadpool.\n");
 		return NULL;
 	}
 	memset(pool,0,sizeof(*pool));
 	pool->worker_head=NULL;
 	pool->worker_tail=NULL;
+	pool->socket=malloc(9*sizeof(char));	//"farm2.sck" e' lunga 9 byte. Cambiare se si usa un altra socket!!
+	if(pool->socket==NULL) {
+		fprintf(stderr,"pool, initialize_pool, fallita malloc di stringa socket\n");
+		return NULL;
+	}
+	strncpy(pool->socket,socket,9);
 	//inizializzazione mutex e cond
 	pthread_mutex_init(&pool->worker_mtx,NULL);
 	pthread_cond_init(&pool->worker_cond,NULL);
@@ -158,25 +169,52 @@ threadpool_t *initialize_pool(long pool_size, size_t queue_len, char* socket) {
 	//crea coda di produzione
 	char **task_queue=malloc(queue_len*sizeof(char*));
 	if(task_queue==NULL) {
-		perror("pool, malloc coda");
-		destroy_pool(pool);
+		fprintf(stderr,"pool, initialize_pool, fallita malloc di coda\n");
+		pthread_mutex_destroy(&pool->worker_mtx);
+		pthread_cond_destroy(&pool->worker_cond);
+		pthread_mutex_destroy(&pool->task_mtx);
+		pthread_cond_destroy(&pool->task_full);
+		free(pool->socket);
+		free(pool);
 		return NULL;
 	}
-	size_t i;
-	for(i=0;i<queue_len;i++)
-		task_queue[i]=ec_is(malloc(MAX_PATHNAME_LEN*sizeof(char)),NULL,"pool, malloc coda 2");
+	int i;
+	for(i=0;i<queue_len;i++) {
+		task_queue[i]=malloc(MAX_PATHNAME_LEN*sizeof(char));
+		if(task_queue[i]==NULL) {
+			fprintf(stderr,"pool, initialize_pool, fallita malloc di queue[%d]\n",i);
+			int j;
+			for(j=0;j<i;j++)
+				free(task_queue[j]);
+			pthread_mutex_destroy(&pool->worker_mtx);
+			pthread_cond_destroy(&pool->worker_cond);
+			pthread_mutex_destroy(&pool->task_mtx);
+			pthread_cond_destroy(&pool->task_full);
+			free(pool->socket);
+			free(pool);
+			return NULL;
+		}
+	}
 	pool->queue_size=queue_len;
 	pool->tasks_head=-1;
 	pool->tasks_tail=-1;
 	
 	int res;
 	res=add_workers(pool,pool_size);
-	if(res) {
-		destroy_pool(pool);
+	if(res<0) {
+		fprintf(stderr,"pool, initialize_pool, add_workers esce con errore %d\n",res);
+		for(i=0;i<queue_len;i++)
+			free(task_queue[j]);
+		pthread_mutex_destroy(&pool->worker_mtx);
+		pthread_cond_destroy(&pool->worker_cond);
+		pthread_mutex_destroy(&pool->task_mtx);
+		pthread_cond_destroy(&pool->task_full);
+		free(pool->socket);
+		free(pool);
 		return NULL;
 	}
 	
-	while(!pool->initialized);
+	while(!pool->initialized);	//attesa attiva di inizializzazione pool
 	
 	return pool;
 }

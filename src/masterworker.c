@@ -41,9 +41,9 @@ static void *sighandler(void *arg) {
 		if(r!=0) {
 			errno=r;
 			perror("ERRORE FATALE 'sigwait'");
-			ec_isnot(pthread_mutex_lock(&running_mtx),0,"masterworker, sighandler, lock");
+			pthread_mutex_lock(&running_mtx);
 			running=0;
-			ec_isnot(pthread_mutex_unlock(&running_mtx),0,"masterworker, sighandler, unlock");
+			pthread_mutex_unlock(&running_mtx);
 			return NULL;
 		}
 		switch(sig) {
@@ -53,21 +53,21 @@ static void *sighandler(void *arg) {
 		case SIGINT:
 		case SIGQUIT:
 		case SIGTERM:
-			ec_isnot(pthread_mutex_lock(&running_mtx),0,"masterworker, sighandler, lock running");
+			pthread_mutex_lock(&running_mtx);
 			running=0;
-			ec_isnot(pthread_mutex_unlock(&running_mtx),0,"masterworker, sighandler, mutex unlock running");
+			pthread_mutex_unlock(&running_mtx);
 			return NULL;
 		
 		case SIGUSR1:	//incrementa di uno i worker
-			ec_isnot(pthread_mutex_lock(&thread_num_mtx),0,"masterworker, sighandler, lock thread_num SIGUSR1");
-			thread_num_change++;
-			ec_isnot(pthread_mutex_unlock(&thread_num_mtx),0,"masterworker, sighandler, unlock thread_num SIGUSR1");
+			pthread_mutex_lock(&running_mtx);
+			running=0;
+			pthread_mutex_unlock(&running_mtx);
 			break;
 		
 		case SIGUSR2:	//decrementa di uno i worker (NB: minimo 1 thread nel pool)
-			ec_isnot(pthread_mutex_lock(&thread_num_mtx),0,"masterworker, sighandler, lock thread_num SIGUSR2");
-			thread_num_change--;
-			ec_isnot(pthread_mutex_unlock(&thread_num_mtx),0,"masterworker, sighandler, unlock thread_num SIGUSR2");
+			pthread_mutex_lock(&running_mtx);
+			running=0;
+			pthread_mutex_unlock(&running_mtx);
 			break;
 		
 		default: ;
@@ -298,12 +298,12 @@ void masterworker(int argc, char *argv[], char *socket) {
 				break;
 			}
 			
-			if(!strncmp(file->d_name,".",2) || !strncmp(file->d_name,"..",3))	//controlla che non siano directory padre
+			if(!strncmp(file->d_name,".",2) || !strncmp(file->d_name,"..",3))	//ignora se stessa e la dir padre
 				continue;	//vai al prossimo file
 				
 			else if(file->d_type==DT_DIR) {	//trovata directory
 				fprintf(stdout,"trovata directory %s\n",file->d_name);
-			dirs_add(&directories,file->d_name,directories->name);	//aggiunta in coda per scorrimento breadth-first
+				dirs_add(&directories,file->d_name,directories->name);	//aggiunta in coda, scorrimento breadth-first
 			}
 			
 			else if(file->d_type==DT_REG) {	//trovato file normale
@@ -324,7 +324,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 				}
 				if(sleep_result!=0)		//nanosleep restituisce errore e non interrotto da segnale
 					continue;
-				//invio file al threadpool
+				//invio file al threadpool TODO
 				fprintf(stdout,"inserisco file %s\n",file->d_name);
 			}
 			
