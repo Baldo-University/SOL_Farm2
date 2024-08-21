@@ -16,10 +16,10 @@ usa per inserire task in coda.
 
 #include "pool.h"
 #include "utils.h"
-
+/*
 //lunghezza max di stringa aumentata di 1 per accomodare il carattere di terminazione
 #define MAX_PATHNAME_LEN 1+MAX_NAMELENGTH
-
+*/
 //funzionamento del singolo thread
 static void *thread_func(void *arg) {
 	fprintf(stdout,"Inizializzazione thread\n");
@@ -27,19 +27,36 @@ static void *thread_func(void *arg) {
 	pthread_mutex_lock(&pool->task_mtx);
 	unsigned int id=++pool->threadID;
 	pthread_mutex_unlock(&pool->task_mtx);
+	//qui mantiene il nome dei task che consuma dalla coda
+	char taskname[MAX_PATHNAME_LEN];
+	
+	//connessione al collector TODO
 	
 	while(pool->running) {
 		pthread_mutex_lock(&pool->task_mtx);
-		if(pool->modify_thread_num<0) {	//rimuovere uno o piu' thread
+		if(pool->modify_thread_num<0) {	//bisogna rimuovere un thread, quello corrente esce dal loop
 			pthread_mutex_lock(&pool->worker_mtx);
-			
+			pool->waiting_workers++;
+			pthread_mutex_unlock(&pool->worker_mtx);
+			break;
+		}
+		
+		memset(taskname,0,MAX_PATHNAME_LEN);
+		while(pool->tasks_head==NULL)	//nessun task in coda
+			pthread_cond_wait(&pool->worker_cond,&pool->task_mtx);	//si mette in attesa di task
+		else {
+			//pthread_cond_signal() per dire che c'e' spazio in coda
 		}
 	}
-}
-
-//attende che il threadpool finisca di elaborare i task passati
-void await_pool_completion() {
-
+	
+	if(pool->running) {	//thread uscito dal loop
+		pool->modify_thread_num++;
+		pthread_mutex_unlock(&pool->task_mtx);
+	}
+	
+	//disconnessione dal collector TODO
+	
+	pthread_exit((void*)NULL);
 }
 
 //distrugge il threadpool
@@ -48,7 +65,11 @@ void destroy_pool(threadpool_t *pool) {
 		fprintf(stderr,"pool, destroy_pool su threadpool non inizializzato\n");
 		return;
 	}
+	
 	pool->running=0;
+	
+	pthread_mutex_lock(&pool->worker_mtx);
+	pthread_cond_broadcast(&pool
 	
 	int res;
 	
@@ -71,20 +92,44 @@ void destroy_pool(threadpool_t *pool) {
 	if(res)
 		fprintf(stderr,"pool, destroy_pool. Uno o piu' mutex non sono stati distrutti\n");
 	res=pthread_cond_destroy(&pool->worker_cond);
-	res=pthread_cond_destroy(&pool->task_full);
+	res=pthread_cond_destroy(&pool->task_cond);
 	if(res)
 		fprintf(stderr,"pool, destroy_pool. Uno o piu' cond non sono state distrutte\n");
 	free(pool);
-	*/
 }
 
 //Inserisce task in coda
-void enqueue_task(char* filename) {
-	
+int enqueue_task(threadpool_t *pool, char* filename) {
+	if(pool==NULL || !pool->initialized) {
+		fprintf(stderr,"pool, enqueue_task, pool non inizializzato\n");
+		return -1;
+	}
+	if(filename==NULL) {
+		fprintf(stderr,"pool, enqueue_task, task vuoto\n");
+		return -2;
+	}
+	tasklist_t *newtask=malloc(sizeof(tasklist_t));
+	if(newtask==NULL) {
+		fprintf(stderr,"pool, enqueue_task, malloc fallita\n");
+		return -3;
+	}
+	//creazione nuovo task
+	strncpy(newtask->task,filename,MAX_PATHNAME_LEN);
+	newtask->next=NULL;
+	//inserimento in coda
+	pthrad_mutex_lock(&pool->task_mtx);
+	while(pool->queue_size==pool->cur_queue_size)	//attendi che ci sia spazio
+		pthread_cond_wait(&pool->task_cond,&pool->task_mtx);
+	pool->worker_tail->next=newtask;
+	pool->worker_tail=newtask;
+	pool->cur_queue_size++;
+	pthread_cond_signal(&pool->worker_cond);	//segnala i thread della presenza di task in coda
+	pthrad_mutex_unlock(&pool->task_mtx);
+	return 0;	//terminato con successo
 }
 
 //Aggiunge thread worker
-int add_workers(threadpool_t *pool, long num) {
+int add_workers(threadpool_t *pool, unsigned int num) {
 	if(pool==NULL) {
 		fprintf(stderr,"pool, add_workers, pool non inizializzato\n");
 		return 1;
@@ -98,26 +143,19 @@ int add_workers(threadpool_t *pool, long num) {
 		return 3;
 	}
 	
-	pthread_mutex_lock(&pool->worker_mtx)!=0);
-	pool->num_threads+=num;
-	pthread_mutex_unlock(&pool->worker_mtx);
-	
 	int i,res;	//valori ausiliari
 	for(i=0;i<num;i++) {
 		workerlist *new_worker=(workerlist*)malloc(sizeof(workerlist));
 		if(new_worker==NULL) {	//controllo errore malloc
 			fprintf(stderr,"pool, impossibile allocare memoria al thread\n");
-			pthread_mutex_lock(&pool->worker_mtx)!=0);
-			pool->num_threads--;
-			pthread_mutex_unlock(&pool->worker_mtx);
+			continue;
 		}
 		new_worker->next=NULL;
 		res=pthread_create(&new_worker->thread,NULL,thread_func,(void*)pool);
 		if(res) {	//controllo errore pthread_create
 			fprintf(stderr,"pool, add_workers, errore in pthread_create() del thread %d, errore %d\n",i+1,res);
-			pthread_mutex_lock(&pool->worker_mtx)!=0);
-			pool->num_threads--;
-			pthread_mutex_unlock(&pool->worker_mtx);
+			free(new_worker);
+			continue;
 		}
 		else {
 			if(pool->worker_tail==NULL)	//primo thread
@@ -125,14 +163,32 @@ int add_workers(threadpool_t *pool, long num) {
 			else
 				pool->worker_tail->next=new_worker;
 			pool->worker_tail=new_worker;
+			pthread_mutex_lock(&pool->worker_mtx);
+			pool->num_threads++;
+			pthread_mutex_unlock(&pool->worker_mtx);
 		}
 	}
 	return 0;
 }
 
 //Rimuove thread worker
-void remove_worker() {
+void remove_worker(threadpool_t *pool) {
+	pthread_mutex_lock(&pool->worker_mtx);
+	if(pool->num_threads>1)	//si diminuiscono i worker se ce n'e' piu' di uno nel pool
+		pool->modify_thread_num--;
+	pthread_mutex_unlock(&pool->worker_mtx);
+}
 
+//attende che il threadpool finisca di elaborare i task passati
+void await_pool_completion(threadpool_t *pool) {
+	if(pool==NULL || !pool->initialized) {
+		fprintf(stderr,"pool, await_pool_completion su threadpool non inizializzato\n");
+		return;
+	}
+	//TODO
+	//la funzione e' chiamata da master quando ha terminato i task
+	//questa fz. attende che i waiting thread siano pari al numero corrente di thread
+	//quando lo sono, questa fz. chiama destroy_pool()
 }
 
 threadpool_t *initialize_pool(long pool_size, size_t queue_len, char* socket) {
@@ -149,66 +205,36 @@ threadpool_t *initialize_pool(long pool_size, size_t queue_len, char* socket) {
 		fprintf(stderr,"pool, initialize_pool, non e' stato possibile allocare memoria al threadpool.\n");
 		return NULL;
 	}
+	//inizializzazione variabili di pool
 	memset(pool,0,sizeof(*pool));
 	pool->worker_head=NULL;
 	pool->worker_tail=NULL;
-	pool->socket=malloc(9*sizeof(char));	//"farm2.sck" e' lunga 9 byte. Cambiare se si usa un altra socket!!
+	pool->tasks_head=NULL;
+	pool->tasks_tail=NULL;
+	pool->socket=malloc(strlen(socket)*sizeof(char));
 	if(pool->socket==NULL) {
 		fprintf(stderr,"pool, initialize_pool, fallita malloc di stringa socket\n");
 		return NULL;
 	}
 	strncpy(pool->socket,socket,9);
+	
 	//inizializzazione mutex e cond
+	pool->queue_size=queue_len;
 	pthread_mutex_init(&pool->worker_mtx,NULL);
 	pthread_cond_init(&pool->worker_cond,NULL);
 	pthread_mutex_init(&pool->task_mtx,NULL);
-	pthread_cond_init(&pool->task_full,NULL);
-	
+	pthread_cond_init(&pool->task_cond,NULL);
 	pool->running=1;
 	
 	//crea coda di produzione
-	char **task_queue=malloc(queue_len*sizeof(char*));
-	if(task_queue==NULL) {
-		fprintf(stderr,"pool, initialize_pool, fallita malloc di coda\n");
-		pthread_mutex_destroy(&pool->worker_mtx);
-		pthread_cond_destroy(&pool->worker_cond);
-		pthread_mutex_destroy(&pool->task_mtx);
-		pthread_cond_destroy(&pool->task_full);
-		free(pool->socket);
-		free(pool);
-		return NULL;
-	}
-	int i;
-	for(i=0;i<queue_len;i++) {
-		task_queue[i]=malloc(MAX_PATHNAME_LEN*sizeof(char));
-		if(task_queue[i]==NULL) {
-			fprintf(stderr,"pool, initialize_pool, fallita malloc di queue[%d]\n",i);
-			int j;
-			for(j=0;j<i;j++)
-				free(task_queue[j]);
-			pthread_mutex_destroy(&pool->worker_mtx);
-			pthread_cond_destroy(&pool->worker_cond);
-			pthread_mutex_destroy(&pool->task_mtx);
-			pthread_cond_destroy(&pool->task_full);
-			free(pool->socket);
-			free(pool);
-			return NULL;
-		}
-	}
-	pool->queue_size=queue_len;
-	pool->tasks_head=-1;
-	pool->tasks_tail=-1;
-	
 	int res;
 	res=add_workers(pool,pool_size);
-	if(res<0) {
+	if(res) {
 		fprintf(stderr,"pool, initialize_pool, add_workers esce con errore %d\n",res);
-		for(i=0;i<queue_len;i++)
-			free(task_queue[j]);
 		pthread_mutex_destroy(&pool->worker_mtx);
 		pthread_cond_destroy(&pool->worker_cond);
 		pthread_mutex_destroy(&pool->task_mtx);
-		pthread_cond_destroy(&pool->task_full);
+		pthread_cond_destroy(&pool->task_cond);
 		free(pool->socket);
 		free(pool);
 		return NULL;

@@ -113,7 +113,7 @@ void list_print(node_t *head) {
 
 //deallocazione memoria lista
 void list_free(node_t *head) {
-	node_t *aux=head;;
+	node_t *aux=head;
 	while(aux!=NULL) {
 		head=head->next;
 		free(aux);
@@ -340,28 +340,16 @@ void masterworker(int argc, char *argv[], char *socket) {
 		free(aux);
 	}
 	
+	//awaitpoolcompletion
+	/*
 	//finito filefinder, se TP ancora attivo mettiti in attesa con while sul running di TP
 	//Il while contiene un if su thread_num_change, se !=0 cambia il numero di thread
 	//Dopodiche' chiudi e pulisci quello che resta da pulire
-	
-	
-	
-	//chiusura forzata del signal handler thread
-	if(running) 
-		ec_isnot(pthread_kill(sighandler_thread,SIGQUIT),0,"masterworker, pthread_kill di signal handler");
-}
-
-/*DEBUG PRINTS
-	fprintf(stdout,"Numero thread: %ld\nLunghezza coda: %ld\nRitardo di inserimento: %ld millisecondi\n",workers,queue_length, queue_delay);
-	int i;
-	fprintf(stdout,"File passati direttamente da linea di comando:\n");
-	for(i=optind;i<argc;i++)
-		fprintf(stdout,"%s\n",argv[i]);
-	fflush(stdout);
-	list_free(directories);
+	while(pool->running) {
+		
+	}
 	*/
-	/*
-	//creazione nworkeratexit
+	
 	FILE *workers_file=fopen("nworkeratexit.txt","w");
 	if(workers_file==NULL)
 		perror("masterworker, fopen nworkeratexit");
@@ -369,4 +357,8 @@ void masterworker(int argc, char *argv[], char *socket) {
 		fprintf(workers_file,"%d\n",);	//inserisci il numero di thread alla fine / INCOMPLETO
 		fclose(workers_file);
 	}
-	*/
+	
+	//chiusura forzata del signal handler thread
+	if(running) 
+		ec_isnot(pthread_kill(sighandler_thread,SIGQUIT),0,"masterworker, pthread_kill di signal handler");
+}
