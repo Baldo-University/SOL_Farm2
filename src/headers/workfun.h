@@ -6,6 +6,6 @@
 		char *pathname;
 	} result_path_t;
 	
-	int workfun(char *filename);
+	long workfun(char *filename);
 	
 #endif
