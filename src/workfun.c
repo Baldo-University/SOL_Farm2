@@ -9,6 +9,6 @@ Il risultato atteso e' la sommatoria "pesata" che va da 0 a N-1, dove N e' il nu
 prodotto tra 'i' e l'i-esimo intero.
 */
 
-int workfun(char *filename){
+long workfun(char *filename){
 	
 }
