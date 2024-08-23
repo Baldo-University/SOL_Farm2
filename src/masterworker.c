@@ -238,17 +238,25 @@ void masterworker(int argc, char *argv[], char *socket) {
 	struct timespec delay_struct, delay_rem;
 	delay_struct.tv_sec=queue_delay/1000;
 	delay_struct.tv_nsec=(queue_delay%1000)*1000000;
+	int sleep_result=0;
 
 	/*FILEFINDER*/
 	//ricerca file da linea di comando
 	int i;
 	for(i=optind;i<argc;i++) {
-		//se bisogna chiudere anticipatamente il programma
-		if(!running)
+		if(!running)	//se bisogna chiudere anticipatamente il programma
 			break;
-			
 		//se bisogna cambiare il numero di worker
-		//TODO
+		pthread_mutex_lock(&thread_num_mtx);
+		while(thread_num_change>0) {	
+			add_worker(&pool);
+			thread_num_change--;
+		}
+		while(thread_num_change<0) {
+			remove_worker(&pool);
+			thread_num_change++;
+		}
+		pthread_mutex_unlock(&thread_num_mtx);
 		
 		struct stat info;
 		int check_stat=stat(argv[i],&info);
@@ -262,7 +270,25 @@ void masterworker(int argc, char *argv[], char *socket) {
 		if(!S_ISREG(info.st_mode))
 			fprintf(stderr,"Passato file %s non regolare da linea di comando, scartato.\n",argv[i]);
 		else {
-			//inserisci in coda con ritardo appropriato
+			//ritardo di inserimento (versione basic)
+			if(sleep_result==0) {	//attesa completa
+				sleep_result=nanosleep(&delay_struct,&delay_rem);
+				if(sleep_result==-1) {	//errore
+					if(errno==EINTR)	//verifica se nanosleep interrotto da segnale
+						errno=0;
+				}
+			}
+			else {	//attesa parziale in seguito ad un'interruzione
+				sleep_result=nanosleep(&delay_rem,&delay_rem);
+				if(sleep_result==-1) {
+					if(errno==EINTR)	//verifica se nanosleep interrotto da segnale
+						errno=0;
+				}
+			}
+			if(sleep_result!=0)		//nanosleep restituisce errore e non interrotto da segnale
+				continue;
+			enqueue_task(&pool,file->d_name);	//invio file
+			fprintf(stdout,"inserisco file %s\n",file->d_name);
 		}
 	}
 	
@@ -273,22 +299,43 @@ void masterworker(int argc, char *argv[], char *socket) {
 			list_free(directories);
 			break;	
 		}
-		
 		//se bisogna cambiare il numero di worker
-		//TODO
+		pthread_mutex_lock(&thread_num_mtx);
+		while(thread_num_change>0) {	
+			add_worker(&pool);
+			thread_num_change--;
+		}
+		while(thread_num_change<0) {
+			remove_worker(&pool);
+			thread_num_change++;
+		}
+		pthread_mutex_unlock(&thread_num_mtx);
 		
 		//apertura e ricerca nella directory corrente
 		DIR *dir=opendir(directories->name);
-		if(dir==NULL)
+		if(dir==NULL) {
 			fprintf(stderr,"Directory %s non trovata\n",directories->name);
+			continue;
+		}
 		struct dirent *file;
 		while((errno=0, file=readdir(dir))!=NULL) {
 			//controllo se sono arrivati segnali di arresto
 			if(!running) {
 				//libera lo spazio delle directory successive, quella corrente viene liberata dopo il while
-				list_free(directories->next); 
+				list_free(directories->next);
 				break;
 			}
+			//se bisogna cambiare il numero di worker
+			pthread_mutex_lock(&thread_num_mtx);
+			while(thread_num_change>0) {	
+				add_worker(&pool);
+				thread_num_change--;
+			}
+			while(thread_num_change<0) {
+				remove_worker(&pool);
+				thread_num_change++;
+			}
+			pthread_mutex_unlock(&thread_num_mtx);
 			//controllo errno
 			if(errno!=0) {
 				fprintf(stderr,"Errore nell'apertura di %s\n",directories->name);
@@ -308,14 +355,14 @@ void masterworker(int argc, char *argv[], char *socket) {
 			
 			else if(file->d_type==DT_REG) {	//trovato file normale
 				//ritardo di inserimento (versione basic)
-				if(sleep_result==0) {
+				if(sleep_result==0) {	//attesa completa
 					sleep_result=nanosleep(&delay_struct,&delay_rem);
 					if(sleep_result==-1) {	//errore
 						if(errno==EINTR)	//verifica se nanosleep interrotto da segnale
 							errno=0;
 					}
 				}
-				else {
+				else {	//attesa parziale in seguito ad un'interruzione
 					sleep_result=nanosleep(&delay_rem,&delay_rem);
 					if(sleep_result==-1) {
 						if(errno==EINTR)	//verifica se nanosleep interrotto da segnale
@@ -324,7 +371,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 				}
 				if(sleep_result!=0)		//nanosleep restituisce errore e non interrotto da segnale
 					continue;
-				//invio file al threadpool TODO
+				enqueue_task(&pool,file->d_name);	//invio file
 				fprintf(stdout,"inserisco file %s\n",file->d_name);
 			}
 			
@@ -339,23 +386,18 @@ void masterworker(int argc, char *argv[], char *socket) {
 		directories=directories->next;
 		free(aux);
 	}
-	
-	//awaitpoolcompletion
-	/*
-	//finito filefinder, se TP ancora attivo mettiti in attesa con while sul running di TP
-	//Il while contiene un if su thread_num_change, se !=0 cambia il numero di thread
-	//Dopodiche' chiudi e pulisci quello che resta da pulire
-	while(pool->running) {
-		
-	}
-	*/
-	
-	FILE *workers_file=fopen("nworkeratexit.txt","w");
-	if(workers_file==NULL)
-		perror("masterworker, fopen nworkeratexit");
+	//master non inserisce piu' file in coda e attende che il threadpool termini 
+	int finalworkersnum=await_pool_completion(&pool);
+	if(finalworkers<1)
+		fprintf(stderr,"masterworker, await_pool_completion resituisce numero non valido di thread\n");
 	else {
-		fprintf(workers_file,"%d\n",);	//inserisci il numero di thread alla fine / INCOMPLETO
-		fclose(workers_file);
+		FILE *workers_file=fopen("nworkeratexit.txt","w");
+		if(workers_file==NULL)
+			perror("masterworker, fopen nworkeratexit");
+		else {
+			fprintf(workers_file,"%d\n",);	//inserisci il numero di thread alla fine / INCOMPLETO
+			fclose(workers_file);
+		}
 	}
 	
 	//chiusura forzata del signal handler thread
