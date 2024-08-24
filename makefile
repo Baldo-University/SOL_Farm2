@@ -1,1 +1,3 @@
-makefile goes here
+CC = gcc
+CFLAGS = -Wall -pdeantic
+
