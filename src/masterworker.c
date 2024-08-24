@@ -101,7 +101,7 @@ void dirs_add(node_t **head, char *name, char *fulldirname) {
 }
 
 /*
-//stampa lista (tenere?)
+//stampa lista (debug)
 void list_print(node_t *head) {
 	node_t *aux=head;
 	while(aux!=NULL) {
@@ -231,7 +231,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 	}
 
 	//creazione threadpool
-	threadpool_t pool=initialize_pool(workers,queue_length,&socket);
+	threadpool_t *pool=initialize_pool(workers,queue_length,socket);
 	ec_is(pool,NULL,"masterworker, initialize_pool");
 	
 	//imposta il ritardo di inserimento
@@ -249,11 +249,11 @@ void masterworker(int argc, char *argv[], char *socket) {
 		//se bisogna cambiare il numero di worker
 		pthread_mutex_lock(&thread_num_mtx);
 		while(thread_num_change>0) {	
-			add_worker(&pool);
+			add_worker(pool);
 			thread_num_change--;
 		}
 		while(thread_num_change<0) {
-			remove_worker(&pool);
+			remove_worker(pool);
 			thread_num_change++;
 		}
 		pthread_mutex_unlock(&thread_num_mtx);
@@ -287,8 +287,8 @@ void masterworker(int argc, char *argv[], char *socket) {
 			}
 			if(sleep_result!=0)		//nanosleep restituisce errore e non interrotto da segnale
 				continue;
-			enqueue_task(&pool,file->d_name);	//invio file
-			fprintf(stdout,"inserisco file %s\n",file->d_name);
+			enqueue_task(pool,argv[i]);	//invio file
+			fprintf(stdout,"inserisco file %s\n",argv[i]);
 		}
 	}
 	
@@ -302,11 +302,11 @@ void masterworker(int argc, char *argv[], char *socket) {
 		//se bisogna cambiare il numero di worker
 		pthread_mutex_lock(&thread_num_mtx);
 		while(thread_num_change>0) {	
-			add_worker(&pool);
+			add_worker(pool);
 			thread_num_change--;
 		}
 		while(thread_num_change<0) {
-			remove_worker(&pool);
+			remove_worker(pool);
 			thread_num_change++;
 		}
 		pthread_mutex_unlock(&thread_num_mtx);
@@ -328,11 +328,11 @@ void masterworker(int argc, char *argv[], char *socket) {
 			//se bisogna cambiare il numero di worker
 			pthread_mutex_lock(&thread_num_mtx);
 			while(thread_num_change>0) {	
-				add_worker(&pool);
+				add_worker(pool);
 				thread_num_change--;
 			}
 			while(thread_num_change<0) {
-				remove_worker(&pool);
+				remove_worker(pool);
 				thread_num_change++;
 			}
 			pthread_mutex_unlock(&thread_num_mtx);
@@ -371,7 +371,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 				}
 				if(sleep_result!=0)		//nanosleep restituisce errore e non interrotto da segnale
 					continue;
-				enqueue_task(&pool,file->d_name);	//invio file
+				enqueue_task(pool,file->d_name);	//invio file
 				fprintf(stdout,"inserisco file %s\n",file->d_name);
 			}
 			
@@ -387,7 +387,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 		free(aux);
 	}
 	//master non inserisce piu' file in coda e attende che il threadpool termini 
-	int finalworkersnum=await_pool_completion(&pool);
+	int finalworkers=await_pool_completion(pool);
 	if(finalworkers<1)
 		fprintf(stderr,"masterworker, await_pool_completion resituisce numero non valido di thread\n");
 	else {
@@ -395,7 +395,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 		if(workers_file==NULL)
 			perror("masterworker, fopen nworkeratexit");
 		else {
-			fprintf(workers_file,"%d\n",);	//inserisci il numero di thread alla fine / INCOMPLETO
+			fprintf(workers_file,"%d\n",finalworkers);	//inserisci il numero di thread alla fine
 			fclose(workers_file);
 		}
 	}

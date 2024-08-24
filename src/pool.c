@@ -22,6 +22,19 @@ usa per inserire task in coda.
 #define MAX_PATHNAME_LEN 1+MAX_NAMELENGTH
 
 //linked list di thread worker
+struct workerlist {
+	pthread_t worker;
+	struct workerlist *next;
+};
+
+//linked list di task
+struct tasklist {
+	char task[MAX_PATHNAME_LEN];	//nome file da elaborare
+	int taskend;					//0 se task normale, 1 se task conclusivo
+	struct tasklist *next;
+};
+/*
+//linked list di thread worker
 typedef struct workerlist {
 	pthread_t worker;
 	struct workerlist *next;
@@ -33,25 +46,7 @@ typedef struct tasklist {
 	int taskend;					//0 se task normale, 1 se task conclusivo
 	struct tasklist *next;
 } tasklist_t;
-	
-struct threadpool {
-	_Atomic unsigned short running;		//coda attiva o no
-	char *socket;						//socket a cui si devono collegare i worker
-	workerlist *worker_head;			//puntatore di testa alla lista dei worker
-	workerlist *worker_tail;			//puntatore di coda alla suddetta lista
-	unsigned int num_threads;			//numero totale di worker, minimo 1
-	unsigned int remove_threads;		//worker da rimuovere
-	unsigned int threadID;				//singolo identificatore dei thread
-	pthread_mutex_t worker_mtx;			//mutex della lista di worker
-	pthread_cond_t worker_cond;			//condizione relativa alla presenza di task in coda
-	tasklist_t *tasks_head;				//coda di produzione
-	tasklist_t *tasks_tail;				//ultimo elemento della coda
-	size_t queue_size;					//lunghezza della coda
-	size_t cur_queue_size;				//dimensione corrente della coda 
-	pthread_mutex_t task_mtx;			//mutex coda task
-	pthread_cond_t task_cond;			//condizione di spazio presente in coda
-};
-
+*/
 //funzionamento del singolo thread
 static void *thread_func(void *arg) {
 	fprintf(stdout,"Inizializzazione thread\n");
