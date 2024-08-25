@@ -61,6 +61,11 @@ static void *thread_func(void *arg) {
 	
 	//connessione al collector TODO
 	
+	pthread_mutex_lock(&pool->worker_mtx);
+	pool->started_threads++;	//il thread viene contato come partito
+	pthread_cond_signal(&pool->worker_cond);	//avvisa add_worker()
+	pthread_mutex_unlock(&pool->worker_mtx);
+	
 	while(pool->running) {
 		fprintf(stdout,"worker %d: in task loop\n",id);
 		pthread_mutex_lock(&pool->worker_mtx);
@@ -75,7 +80,7 @@ static void *thread_func(void *arg) {
 		pthread_mutex_lock(&pool->task_mtx);
 		while(pool->tasks_head==NULL) {	//nessun task in coda
 			fprintf(stdout,"worker %d: nessun task in coda\n",id);
-			pthread_cond_wait(&pool->worker_cond,&pool->task_mtx);	//si mette in attesa di task
+			pthread_cond_wait(&pool->empty_queue_cond,&pool->task_mtx);	//si mette in attesa di task
 		}
 		//controlla se il task in coda sia quello conclusivo
 		if(pool->tasks_head->endtask) {
@@ -92,7 +97,7 @@ static void *thread_func(void *arg) {
 			fprintf(stdout,"worker %d: coda svuotata\n",id);
 		}
 		free(aux);
-		pthread_cond_signal(&pool->task_cond); //signal di presenza spazio libero nella coda
+		pthread_cond_signal(&pool->full_queue_cond); //segnala la presenza di spazio libero nella coda
 		pthread_mutex_unlock(&pool->task_mtx);
 		//chiama workfun e invia il risultato al collector TODO
 		fprintf(stderr,"Thread %d: eseguo %s\n",id,taskname);	//debug print
@@ -125,11 +130,11 @@ int enqueue_task(threadpool_t *pool, char* filename) {
 	//inserimento in fondo alla coda di produzione
 	pthread_mutex_lock(&pool->task_mtx);
 	while(pool->queue_size==pool->cur_queue_size)	//attendi che ci sia spazio
-		pthread_cond_wait(&pool->task_cond,&pool->task_mtx);
+		pthread_cond_wait(&pool->full_queue_cond,&pool->task_mtx);
 	pool->tasks_tail->next=newtask;
 	pool->tasks_tail=newtask;
 	pool->cur_queue_size++;
-	pthread_cond_signal(&pool->worker_cond);	//segnala i thread della presenza di task in coda
+	pthread_cond_signal(&pool->empty_queue_cond);	//segnala i thread della presenza di task in coda
 	pthread_mutex_unlock(&pool->task_mtx);
 	return 0;	//terminato con successo
 }
@@ -160,7 +165,10 @@ void add_worker(threadpool_t *pool) {
 		pool->worker_tail->next=new_worker;
 	pool->worker_tail=new_worker;
 	pool->num_threads++;
+	while(pool->num_threads!=pool->started_threads)	//aspetta finche' worker creato non possa entrare in loop
+		pthread_cond_wait(&pool->worker_cond,&pool->worker_mtx);
 	pthread_mutex_unlock(&pool->worker_mtx);
+	fprintf(stderr,"pool, addworker ha inserito un thread attivo nel pool\n");
 	return;
 }
 
@@ -195,7 +203,7 @@ int await_pool_completion(threadpool_t *pool) {
 	pthread_mutex_lock(&pool->task_mtx);
 	pool->tasks_tail->next=finaltask;	//inserimento che puo' "sforare" la coda in quanto ultimo elemento
 	pool->tasks_tail=finaltask;
-	pthread_cond_broadcast(&pool->worker_cond);	//segnala tutti i thread della presenza di task in coda
+	pthread_cond_broadcast(&pool->empty_queue_cond);	//segnala tutti i thread della presenza di task in coda
 	pthread_mutex_unlock(&pool->task_mtx);
 	
 	//dealloca i worker
@@ -209,15 +217,16 @@ int await_pool_completion(threadpool_t *pool) {
 	free(pool->tasks_head);	//dealloca l'ultimo task di coda
 	
 	//distruggi mutex e cond
-	int res;
-	res=pthread_mutex_destroy(&pool->worker_mtx);
-	res=pthread_mutex_destroy(&pool->task_mtx);
-	if(res)
-		fprintf(stderr,"pool, destroy_pool. Uno o piu' mutex non sono stati distrutti\n");
-	res=pthread_cond_destroy(&pool->worker_cond);
-	res=pthread_cond_destroy(&pool->task_cond);
-	if(res)
-		fprintf(stderr,"pool, destroy_pool. Una o piu' cond non sono state distrutte\n");
+	if(pthread_mutex_destroy(&pool->worker_mtx))
+		perror("pool, destroy_pool, pthread_mutex_destroy worker_mtx");
+	if(pthread_mutex_destroy(&pool->task_mtx))
+		perror("pool, destroy_pool, pthread_mutex_destroy task_mtx");
+	if(pthread_cond_destroy(&pool->worker_cond))
+		perror("pool, destroy_pool, pthread_cond_destroy worker_cond");
+	if(pthread_cond_destroy(&pool->empty_queue_cond))
+		perror("pool, destroy_pool, pthread_cond_destroy empty_queue_cond");
+	if(pthread_cond_destroy(&pool->full_queue_cond))
+		perror("pool, destroy_pool, pthread_cond_destroy full_queue_cond");
 	free(pool->socket);
 	free(pool);
 	return workersatexit;
@@ -256,24 +265,34 @@ threadpool_t *initialize_pool(long pool_size, size_t queue_len, char* socket) {
 	pthread_mutex_init(&pool->worker_mtx,NULL);
 	pthread_cond_init(&pool->worker_cond,NULL);
 	pthread_mutex_init(&pool->task_mtx,NULL);
-	pthread_cond_init(&pool->task_cond,NULL);
+	pthread_cond_init(&pool->empty_queue_cond,NULL);
+	pthread_cond_init(&pool->full_queue_cond,NULL);
 	pool->running=1;
 	
 	//crea coda di produzione
 	int i;
 	for(i=0;i<pool_size;i++)
 		add_worker(pool);
+	pthread_mutex_lock(&pool->worker_mtx);
 	if(pool->num_threads==0) {
 		fprintf(stderr,"pool, initialize_pool, threadpool parte con zero worker\n");
 		pthread_mutex_unlock(&pool->worker_mtx);
-		pthread_mutex_destroy(&pool->worker_mtx);
-		pthread_cond_destroy(&pool->worker_cond);
-		pthread_mutex_destroy(&pool->task_mtx);
-		pthread_cond_destroy(&pool->task_cond);
+		if(pthread_mutex_destroy(&pool->worker_mtx))
+			perror("pool, initialize_pool, pthread_mutex_destroy worker_mtx");
+		if(pthread_mutex_destroy(&pool->task_mtx))
+			perror("pool, initialize_pool, pthread_mutex_destroy task_mtx");
+		if(pthread_cond_destroy(&pool->worker_cond))
+			perror("pool, initialize_pool, pthread_cond_destroy worker_cond");
+		if(pthread_cond_destroy(&pool->empty_queue_cond))
+			perror("pool, initialize_pool, pthread_cond_destroy empty_queue_cond");
+		if(pthread_cond_destroy(&pool->full_queue_cond))
+			perror("pool, initialize_pool, pthread_cond_destroy full_queue_cond");
 		free(pool->socket);
 		free(pool);
 		return NULL;
 	}
+	fprintf(stderr,"Pool: creati %d thread\n",pool->num_threads);
+	pthread_mutex_unlock(&pool->worker_mtx);
 	
 	return pool;
 }

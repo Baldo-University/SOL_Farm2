@@ -249,6 +249,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 	//ricerca file da linea di comando
 	int i;
 	for(i=optind;i<argc;i++) {
+		fprintf(stderr,"Filefinder di argv[%d]\n",i);
 		if(!running)	//se bisogna chiudere anticipatamente il programma
 			break;
 		//se bisogna cambiare il numero di worker
@@ -388,6 +389,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 		directories=directories->next;
 		free(aux);
 	}
+	fprintf(stderr,"masterworker: filefinder termina\n");
 	//master non inserisce piu' file in coda e attende che il threadpool termini 
 	int finalworkers=await_pool_completion(pool);
 	if(finalworkers<1)
