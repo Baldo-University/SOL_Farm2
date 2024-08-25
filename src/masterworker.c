@@ -149,6 +149,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 	pthread_t sighandler_thread;
 	ec_isnot(pthread_create(&sighandler_thread,NULL,&sighandler,&mask),0,"masterworker, pthread_create sighandler");
 	ec_isnot(pthread_detach(sighandler_thread),0,"masterworker, pthread_detach");
+	fprintf(stderr,"Masterworker: segnali settati\n");
 	
 	//dichiarazione ed iniaizlizzazione delle variabili default. Se necessario verranno sovrascritte
 	long workers=DEFAULT_N;
@@ -229,16 +230,20 @@ void masterworker(int argc, char *argv[], char *socket) {
 			fprintf(stderr,"Passata opzione -%c non riconosciuta.\n",opt);
 		}
 	}
+	fprintf(stderr,"Masterworker: getopt completata\n");
+	fprintf(stderr,"dim. iniziale threadpool: %ld\nlungh. coda: %ld\nritardo inserimento: %ld\n", workers,queue_length,queue_delay);
 
 	//creazione threadpool
 	threadpool_t *pool=initialize_pool(workers,queue_length,socket);
 	ec_is(pool,NULL,"masterworker, initialize_pool");
+	fprintf(stderr,"Masterworker: threadpool inizializzato\n");
 	
 	//imposta il ritardo di inserimento
 	struct timespec delay_struct, delay_rem;
 	delay_struct.tv_sec=queue_delay/1000;
 	delay_struct.tv_nsec=(queue_delay%1000)*1000000;
 	int sleep_result=0;
+	fprintf(stderr,"Masterworker: ritardo impostato\n");
 
 	/*FILEFINDER*/
 	//ricerca file da linea di comando
@@ -262,10 +267,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 		int check_stat=stat(argv[i],&info);
 		if(check_stat==-1) {
 			perror("masterworker, stat di file regolare");
-			ec_isnot(pthread_mutex_lock(&running_mtx),0,"masterworker, sighandler, lock running");
-			running=0;
-			ec_isnot(pthread_mutex_unlock(&running_mtx),0,"masterworker, sighandler, mutex unlock running");
-			break;
+			continue;
 		}
 		if(!S_ISREG(info.st_mode))
 			fprintf(stderr,"Passato file %s non regolare da linea di comando, scartato.\n",argv[i]);
@@ -396,11 +398,14 @@ void masterworker(int argc, char *argv[], char *socket) {
 			perror("masterworker, fopen nworkeratexit");
 		else {
 			fprintf(workers_file,"%d\n",finalworkers);	//inserisci il numero di thread alla fine
+			fprintf(stderr,"Masterworker: workers ricevuti: %d\n",finalworkers);
 			fclose(workers_file);
 		}
 	}
+	fprintf(stderr,"Masterworker: threadpool ha concluso il suo lavoro\n");
 	
 	//chiusura forzata del signal handler thread
 	if(running) 
 		ec_isnot(pthread_kill(sighandler_thread,SIGQUIT),0,"masterworker, pthread_kill di signal handler");
+	fprintf(stderr,"Masterworker: chiusura\n");
 }
