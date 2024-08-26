@@ -231,7 +231,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 		}
 	}
 	fprintf(stderr,"Masterworker: getopt completata\n");
-	fprintf(stderr,"dim. iniziale threadpool: %ld\nlungh. coda: %ld\nritardo inserimento: %ld\n", workers,queue_length,queue_delay);
+	fprintf(stderr,"dim. iniziale threadpool: %ld\nlungh. coda: %ld\nritardo inserimento: %ld secondi\n", workers,queue_length,queue_delay);
 
 	//creazione threadpool
 	threadpool_t *pool=initialize_pool(workers,queue_length,socket);
@@ -249,10 +249,11 @@ void masterworker(int argc, char *argv[], char *socket) {
 	//ricerca file da linea di comando
 	int i;
 	for(i=optind;i<argc;i++) {
-		fprintf(stderr,"Filefinder di argv[%d]\n",i);
+		fprintf(stderr,"Filefinder: argv[%d] inizia\n",i);
 		if(!running)	//se bisogna chiudere anticipatamente il programma
 			break;
 		//se bisogna cambiare il numero di worker
+		//fprintf(stderr,"Filefinder: argv[%d] prelock add/remove threads\n",i);
 		pthread_mutex_lock(&thread_num_mtx);
 		while(thread_num_change>0) {	
 			add_worker(pool);
@@ -263,16 +264,20 @@ void masterworker(int argc, char *argv[], char *socket) {
 			thread_num_change++;
 		}
 		pthread_mutex_unlock(&thread_num_mtx);
+		//fprintf(stderr,"Filefinder: argv[%d] postlock add/remove threads\n",i);
 		
 		struct stat info;
+		//fprintf(stderr,"Filefinder: argv[%d] pre checkstat\n",i);
 		int check_stat=stat(argv[i],&info);
 		if(check_stat==-1) {
 			perror("masterworker, stat di file regolare");
 			continue;
 		}
+		//fprintf(stderr,"Filefinder: argv[%d] pre typecheck\n",i);
 		if(!S_ISREG(info.st_mode))
 			fprintf(stderr,"Passato file %s non regolare da linea di comando, scartato.\n",argv[i]);
 		else {
+			fprintf(stderr,"Filefinder: argv[%d] inserimento\n",i);
 			//ritardo di inserimento (versione basic)
 			if(sleep_result==0) {	//attesa completa
 				sleep_result=nanosleep(&delay_struct,&delay_rem);
@@ -290,7 +295,11 @@ void masterworker(int argc, char *argv[], char *socket) {
 			}
 			if(sleep_result!=0)		//nanosleep restituisce errore e non interrotto da segnale
 				continue;
-			enqueue_task(pool,argv[i]);	//invio file
+			fprintf(stderr,"Filefinder: argv[%d] pre enqueue\n",i);
+			int res=enqueue_task(pool,argv[i]);
+			if(res)	//invio file
+				fprintf(stderr,"filefinder: argv[%d], enqueue faillita con errore %d",i,res);
+			fprintf(stderr,"Filefinder: argv[%d] post enqueue\n",i);
 			fprintf(stdout,"inserisco file %s\n",argv[i]);
 		}
 	}

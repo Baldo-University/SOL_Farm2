@@ -92,6 +92,7 @@ static void *thread_func(void *arg) {
 		strncpy(taskname,pool->tasks_head->task,MAX_PATHNAME_LEN);
 		tasklist_t *aux=pool->tasks_head;
 		pool->tasks_head=pool->tasks_head->next;
+		pool->cur_queue_size--;
 		if(pool->tasks_head==NULL) {
 			pool->tasks_tail=NULL;
 			fprintf(stdout,"worker %d: coda svuotata\n",id);
@@ -123,19 +124,33 @@ int enqueue_task(threadpool_t *pool, char* filename) {
 		fprintf(stderr,"pool, enqueue_task, malloc fallita\n");
 		return -3;
 	}
+	fprintf(stderr,"pool: enqueue parte\n");
 	//creazione nuovo task
 	strncpy(newtask->task,filename,MAX_PATHNAME_LEN);
 	newtask->endtask=0;		//task non finale
 	newtask->next=NULL;
 	//inserimento in fondo alla coda di produzione
+	fprintf(stderr,"pool: enqueue prelock\n");
 	pthread_mutex_lock(&pool->task_mtx);
-	while(pool->queue_size==pool->cur_queue_size)	//attendi che ci sia spazio
+	fprintf(stderr,"pool: enqueue postlock\n");
+	while(pool->queue_size==pool->cur_queue_size) {	//attendi che ci sia spazio
+		fprintf(stderr,"pool: enqueue coda piena\n");
 		pthread_cond_wait(&pool->full_queue_cond,&pool->task_mtx);
-	pool->tasks_tail->next=newtask;
-	pool->tasks_tail=newtask;
+	}
+	fprintf(stderr,"pool: enqueue pre inserimento\n");
+	if(pool->tasks_head==NULL) {	//coda di produzione vuota
+		pool->tasks_head=pool->tasks_tail=newtask;
+	}
+	else {	//inserimento in coda non vuota
+		pool->tasks_tail->next=newtask;
+		pool->tasks_tail=newtask;
+	}
 	pool->cur_queue_size++;
+	fprintf(stderr,"pool: enqueue task inserito\n");
 	pthread_cond_signal(&pool->empty_queue_cond);	//segnala i thread della presenza di task in coda
+	fprintf(stderr,"pool: enqueue preunlock\n");
 	pthread_mutex_unlock(&pool->task_mtx);
+	fprintf(stderr,"pool: enqueue postunlock\n");
 	return 0;	//terminato con successo
 }
 
