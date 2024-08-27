@@ -10,5 +10,6 @@ prodotto tra 'i' e l'i-esimo intero.
 */
 
 long workfun(char *filename){
-	
+	long result=0;
+	return result;
 }

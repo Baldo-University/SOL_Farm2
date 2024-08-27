@@ -149,7 +149,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 	pthread_t sighandler_thread;
 	ec_isnot(pthread_create(&sighandler_thread,NULL,&sighandler,&mask),0,"masterworker, pthread_create sighandler");
 	ec_isnot(pthread_detach(sighandler_thread),0,"masterworker, pthread_detach");
-	fprintf(stderr,"Masterworker: segnali settati\n");
+	//fprintf(stderr,"Masterworker: segnali settati\n");
 	
 	//dichiarazione ed iniaizlizzazione delle variabili default. Se necessario verranno sovrascritte
 	long workers=DEFAULT_N;
@@ -230,7 +230,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 			fprintf(stderr,"Passata opzione -%c non riconosciuta.\n",opt);
 		}
 	}
-	fprintf(stderr,"Masterworker: getopt completata\n");
+	//fprintf(stderr,"Masterworker: getopt completata\n");
 	fprintf(stderr,"dim. iniziale threadpool: %ld\nlungh. coda: %ld\nritardo inserimento: %ld secondi\n", workers,queue_length,queue_delay);
 
 	//creazione threadpool
@@ -249,7 +249,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 	//ricerca file da linea di comando
 	int i;
 	for(i=optind;i<argc;i++) {
-		fprintf(stderr,"Filefinder: argv[%d] inizia\n",i);
+		//fprintf(stderr,"Filefinder: argv[%d] inizia\n",i);
 		if(!running)	//se bisogna chiudere anticipatamente il programma
 			break;
 		//se bisogna cambiare il numero di worker
@@ -270,7 +270,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 		//fprintf(stderr,"Filefinder: argv[%d] pre checkstat\n",i);
 		int check_stat=stat(argv[i],&info);
 		if(check_stat==-1) {
-			perror("masterworker, stat di file regolare");
+			perror("Masterworker, stat di file regolare");
 			continue;
 		}
 		//fprintf(stderr,"Filefinder: argv[%d] pre typecheck\n",i);
@@ -295,12 +295,12 @@ void masterworker(int argc, char *argv[], char *socket) {
 			}
 			if(sleep_result!=0)		//nanosleep restituisce errore e non interrotto da segnale
 				continue;
-			fprintf(stderr,"Filefinder: argv[%d] pre enqueue\n",i);
+			//fprintf(stderr,"Filefinder: argv[%d] pre enqueue\n",i);
 			int res=enqueue_task(pool,argv[i]);
 			if(res)	//invio file
-				fprintf(stderr,"filefinder: argv[%d], enqueue faillita con errore %d",i,res);
-			fprintf(stderr,"Filefinder: argv[%d] post enqueue\n",i);
-			fprintf(stdout,"inserisco file %s\n",argv[i]);
+				fprintf(stderr,"Filefinder: argv[%d], enqueue faillita con errore %d",i,res);
+			//fprintf(stderr,"Filefinder: argv[%d] post enqueue\n",i);
+			fprintf(stdout,"Filefinder: inserisco file %s\n",argv[i]);
 		}
 	}
 	
@@ -384,7 +384,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 				if(sleep_result!=0)		//nanosleep restituisce errore e non interrotto da segnale
 					continue;
 				enqueue_task(pool,file->d_name);	//invio file
-				fprintf(stdout,"inserisco file %s\n",file->d_name);
+				fprintf(stdout,"Filefinder: inserisco file %s\n",file->d_name);
 			}
 			
 			else if(file->d_type==DT_UNKNOWN)
@@ -400,7 +400,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 	}
 	fprintf(stderr,"masterworker: filefinder termina\n");
 	//master non inserisce piu' file in coda e attende che il threadpool termini 
-	int finalworkers=await_pool_completion(pool);
+	long finalworkers=await_pool_completion(pool);
 	if(finalworkers<1)
 		fprintf(stderr,"masterworker, await_pool_completion resituisce numero non valido di thread\n");
 	else {
@@ -408,8 +408,8 @@ void masterworker(int argc, char *argv[], char *socket) {
 		if(workers_file==NULL)
 			perror("masterworker, fopen nworkeratexit");
 		else {
-			fprintf(workers_file,"%d\n",finalworkers);	//inserisci il numero di thread alla fine
-			fprintf(stderr,"Masterworker: workers ricevuti: %d\n",finalworkers);
+			fprintf(workers_file,"%ld\n",finalworkers);	//inserisci il numero di thread alla fine
+			fprintf(stderr,"Masterworker: ricevuti %ld worker\n",finalworkers);
 			fclose(workers_file);
 		}
 	}
