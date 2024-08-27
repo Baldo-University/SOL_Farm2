@@ -34,7 +34,7 @@
 	threadpool_t *initialize_pool(long, size_t, char*);
 	
 	//attende che il threadpool finisca di elaborare i task passati
-	int await_pool_completion(threadpool_t*);
+	long await_pool_completion(threadpool_t*);
 	
 	//Inserisce task in coda. Usato da masterworker
 	int enqueue_task(threadpool_t*,char*);
