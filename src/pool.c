@@ -15,6 +15,7 @@ usa per inserire task in coda.
 #include <string.h>
 #include <unistd.h>
 
+#include "message.h"
 #include "pool.h"
 #include "utils.h"
 #include "workfun.h"
@@ -34,12 +35,6 @@ struct tasklist {
 	int endtask;					//0 se task normale, 1 se task conclusivo
 	struct tasklist *next;
 };
-
-//struct del tipo di messaggio da inviare al collector
-typedef struct result_path {
-	long result;
-	char *pathname;
-} result_path_t;
 
 //funzionamento del singolo thread
 static void *thread_func(void *arg) {
