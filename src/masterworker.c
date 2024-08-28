@@ -100,17 +100,6 @@ void dirs_add(node_t **head, char *name, char *fulldirname) {
 	aux->next=new;
 }
 
-/*
-//stampa lista (debug)
-void list_print(node_t *head) {
-	node_t *aux=head;
-	while(aux!=NULL) {
-		fprintf(stdout,"%s\n",aux->name);
-		aux=aux->next;
-	}
-}
-*/
-
 //deallocazione memoria lista
 void list_free(node_t *head) {
 	node_t *aux=head;
@@ -305,6 +294,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 	}
 	
 	//ricerca nelle directory -d
+	char fullpathname[MAX_PATHNAME_LEN];	//stringa per memorizzare il nome completo dei file
 	while(directories!=NULL) {
 		//se bisogna chiudere anticipatamente il programma
 		if(!running) {
@@ -331,6 +321,14 @@ void masterworker(int argc, char *argv[], char *socket) {
 		}
 		struct dirent *file;
 		while((errno=0, file=readdir(dir))!=NULL) {
+			//controllo errno
+			if(errno!=0) {
+				fprintf(stderr,"Errore nell'apertura di %s\n",directories->name);
+				ec_isnot(pthread_mutex_lock(&running_mtx),0,"masterworker, mutex lock in dirsearch");
+				running=0;
+				ec_isnot(pthread_mutex_unlock(&running_mtx),0,"masterworker, mutex unlock in dirsearch");
+				break;
+			}
 			//controllo se sono arrivati segnali di arresto
 			if(!running) {
 				//libera lo spazio delle directory successive, quella corrente viene liberata dopo il while
@@ -348,14 +346,6 @@ void masterworker(int argc, char *argv[], char *socket) {
 				thread_num_change++;
 			}
 			pthread_mutex_unlock(&thread_num_mtx);
-			//controllo errno
-			if(errno!=0) {
-				fprintf(stderr,"Errore nell'apertura di %s\n",directories->name);
-				ec_isnot(pthread_mutex_lock(&running_mtx),0,"masterworker, mutex lock in dirsearch");
-				running=0;
-				ec_isnot(pthread_mutex_unlock(&running_mtx),0,"masterworker, mutex unlock in dirsearch");
-				break;
-			}
 			
 			if(!strncmp(file->d_name,".",2) || !strncmp(file->d_name,"..",3))	//ignora se stessa e la dir padre
 				continue;	//vai al prossimo file
@@ -366,7 +356,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 			}
 			
 			else if(file->d_type==DT_REG) {	//trovato file normale
-				//ritardo di inserimento (versione basic)
+				//ritardo di inserimento (da rifare TODO)
 				if(sleep_result==0) {	//attesa completa
 					sleep_result=nanosleep(&delay_struct,&delay_rem);
 					if(sleep_result==-1) {	//errore
@@ -383,8 +373,11 @@ void masterworker(int argc, char *argv[], char *socket) {
 				}
 				if(sleep_result!=0)		//nanosleep restituisce errore e non interrotto da segnale
 					continue;
-				enqueue_task(pool,file->d_name);	//invio file
-				fprintf(stdout,"Filefinder: inserisco file %s\n",file->d_name);
+				//metti il nome completo nella stringa di supporto prima di produrre il file in coda
+				memset(fullpathname,0,MAX_PATHNAME_LEN);
+				snprintf(fullpathname,MAX_PATHNAME_LEN,"%s/%s",directories->name,file->d_name);
+				enqueue_task(pool,fullpathname);	//invio file
+				fprintf(stdout,"Filefinder: inserisco file %s\n",fullpathname);
 			}
 			
 			else if(file->d_type==DT_UNKNOWN)

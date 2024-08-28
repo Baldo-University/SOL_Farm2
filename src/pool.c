@@ -13,10 +13,11 @@ usa per inserire task in coda.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "pool.h"
 #include "utils.h"
-//#include "workfun.h"
+#include "workfun.h"
 
 //lunghezza max di stringa aumentata di 1 per accomodare il carattere di terminazione
 #define MAX_PATHNAME_LEN 1+MAX_NAMELENGTH
@@ -33,20 +34,13 @@ struct tasklist {
 	int endtask;					//0 se task normale, 1 se task conclusivo
 	struct tasklist *next;
 };
-/*
-//linked list di thread worker
-typedef struct workerlist {
-	pthread_t worker;
-	struct workerlist *next;
-} workerlist_t;
-	
-//linked list di task
-typedef struct tasklist {
-	char task[MAX_PATHNAME_LEN];	//nome file da elaborare
-	int taskend;					//0 se task normale, 1 se task conclusivo
-	struct tasklist *next;
-} tasklist_t;
-*/
+
+//struct del tipo di messaggio da inviare al collector
+typedef struct result_path {
+	long result;
+	char *pathname;
+} result_path_t;
+
 //funzionamento del singolo thread
 static void *thread_func(void *arg) {
 	fprintf(stderr,"Worker: inizializzazione parte\n");
@@ -54,9 +48,9 @@ static void *thread_func(void *arg) {
 	pthread_mutex_lock(&pool->worker_mtx);
 	unsigned int id=++pool->threadID;
 	pthread_mutex_unlock(&pool->worker_mtx);
-	//qui mantiene il nome dei task che consuma dalla coda
-	char taskname[MAX_PATHNAME_LEN];
-	tasklist_t *aux=NULL;
+	char taskname[MAX_PATHNAME_LEN];	//nome del task consumato dalla coda
+	long result=0;			//risultato della funzione workfun()
+	tasklist_t *aux=NULL;	//puntatore ausiliario per l'eliminazione di task dalla coda
 	
 	fprintf(stderr,"Worker %d: inizializzato, pronto a svolgere task\n",id);
 	
@@ -101,8 +95,11 @@ static void *thread_func(void *arg) {
 		free(aux);
 		pthread_cond_signal(&pool->full_queue_cond); //segnala la presenza di spazio libero nella coda
 		pthread_mutex_unlock(&pool->task_mtx);
-		//chiama workfun e invia il risultato al collector TODO
-		fprintf(stderr,"Worker %d: eseguo %s\n",id,taskname);	//debug print
+		result=workfun(taskname);
+		if(result<0)
+			fprintf(stderr,"Worker %d: errore di workfun %ld\n",id,result);
+		else
+			fprintf(stderr,"Worker %d: il risultato di %s e' %ld\n",id,taskname,result);
 	}
 	
 	//disconnessione dal collector TODO
