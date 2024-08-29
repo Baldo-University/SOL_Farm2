@@ -20,9 +20,6 @@ usa per inserire task in coda.
 #include "utils.h"
 #include "workfun.h"
 
-//lunghezza max di stringa aumentata di 1 per accomodare il carattere di terminazione
-#define MAX_PATHNAME_LEN 1+MAX_NAMELENGTH
-
 //linked list di thread worker
 struct workerlist {
 	pthread_t worker;
@@ -38,7 +35,7 @@ struct tasklist {
 
 //funzionamento del singolo thread
 static void *thread_func(void *arg) {
-	fprintf(stderr,"Worker: inizializzazione parte\n");
+	//fprintf(stderr,"Worker: inizializzazione parte\n");
 	threadpool_t *pool=(threadpool_t*)arg;
 	pthread_mutex_lock(&pool->worker_mtx);
 	unsigned int id=++pool->threadID;
@@ -47,7 +44,7 @@ static void *thread_func(void *arg) {
 	long result=0;			//risultato della funzione workfun()
 	tasklist_t *aux=NULL;	//puntatore ausiliario per l'eliminazione di task dalla coda
 	
-	fprintf(stderr,"Worker %d: inizializzato, pronto a svolgere task\n",id);
+	//fprintf(stderr,"Worker %d: inizializzato, pronto a svolgere task\n",id);
 	
 	//connessione al collector TODO
 	
@@ -74,7 +71,7 @@ static void *thread_func(void *arg) {
 		}
 		//controlla se il task in coda sia quello conclusivo
 		if(pool->tasks_head->endtask) {
-			fprintf(stdout,"Worker %d: trovato task finale\n",id);
+			//fprintf(stdout,"Worker %d: trovato task finale\n",id);
 			pthread_mutex_unlock(&pool->task_mtx);
 			break;
 		}
@@ -85,7 +82,7 @@ static void *thread_func(void *arg) {
 		pool->cur_queue_size--;
 		if(pool->tasks_head==NULL) {
 			pool->tasks_tail=NULL;
-			fprintf(stdout,"Worker %d: coda svuotata\n",id);
+			//fprintf(stdout,"Worker %d: coda svuotata\n",id);
 		}
 		free(aux);
 		pthread_cond_signal(&pool->full_queue_cond); //segnala la presenza di spazio libero nella coda
@@ -95,10 +92,11 @@ static void *thread_func(void *arg) {
 			fprintf(stderr,"Worker %d: errore di workfun %ld\n",id,result);
 		else
 			fprintf(stderr,"Worker %d: il risultato di %s e' %ld\n",id,taskname,result);
+		//invio al collector TODO
 	}
 	
 	//disconnessione dal collector TODO
-	fprintf(stderr,"worker %d: uscita\n",id);
+	//fprintf(stderr,"worker %d: uscita\n",id);
 	pthread_exit((void*)NULL);
 }
 
@@ -137,7 +135,7 @@ int enqueue_task(threadpool_t *pool, char* filename) {
 		pool->tasks_tail->next=newtask;
 		pool->tasks_tail=newtask;
 	}
-	fprintf(stderr,"pool: inserito task %s\n",filename);
+	//fprintf(stderr,"pool: inserito task %s\n",filename);
 	pool->cur_queue_size++;
 	//fprintf(stderr,"pool: enqueue task inserito\n");
 	pthread_cond_signal(&pool->empty_queue_cond);	//segnala i thread della presenza di task in coda
@@ -176,7 +174,7 @@ void add_worker(threadpool_t *pool) {
 	while(pool->num_threads!=pool->started_threads)	//aspetta finche' worker creato non possa entrare in loop
 		pthread_cond_wait(&pool->worker_cond,&pool->worker_mtx);
 	pthread_mutex_unlock(&pool->worker_mtx);
-	fprintf(stderr,"pool, addworker ha inserito un thread attivo nel pool\n");
+	//fprintf(stderr,"pool, addworker ha inserito un thread attivo nel pool\n");
 	return;
 }
 
@@ -199,7 +197,7 @@ long await_pool_completion(threadpool_t *pool) {
 	pthread_mutex_lock(&pool->worker_mtx);
 	long workersatexit=pool->num_threads;
 	pthread_mutex_unlock(&pool->worker_mtx);
-	fprintf(stderr,"closepool: salvato numero di worker alla fine\n");
+	//fprintf(stderr,"closepool: salvato numero di worker alla fine\n");
 	
 	//inserisce il task finale in coda
 	tasklist_t *finaltask=malloc(sizeof(tasklist_t));
@@ -208,32 +206,19 @@ long await_pool_completion(threadpool_t *pool) {
 		pool->running=0;
 		return -1;
 	}
-	fprintf(stderr,"closepool: allocazione memoria del finaltask\n");
 	finaltask->endtask=1;
-	fprintf(stderr,"closepool: endtask settato\n");
 	finaltask->next=NULL;
-	fprintf(stderr,"closepool: task successivo al finale settato a NULL\n");
 	pthread_mutex_lock(&pool->task_mtx);
-	fprintf(stderr,"closepool: lock dei task\n");
-	if(pool->tasks_head==NULL) {
-		fprintf(stderr,"closepool: inserimento task finale in coda vuota\n");
+	if(pool->tasks_head==NULL)
 		pool->tasks_head=pool->tasks_tail=finaltask;	//NB: si aggiunge senza controllare la lungh. di coda
-	}
 	else {
-		fprintf(stderr,"closepool: inserimento task finale in coda non vuota\n");
 		pool->tasks_tail->next=finaltask;
-		fprintf(stderr,"closepool: inserito task finale\n");
 		pool->tasks_tail=finaltask;
-		fprintf(stderr,"closepool: puntatore di fine coda spostato al task finale\n");
 	}
-	fprintf(stderr,"closepool: inserimento task finale completato\n");
 	pthread_cond_broadcast(&pool->empty_queue_cond);	//segnala tutti i thread della presenza di task in coda
-	fprintf(stderr,"closepool: broadcast\n");
 	pthread_mutex_unlock(&pool->task_mtx);
-	fprintf(stderr,"closepool: unlock dei task\n");
 	//dealloca i worker
 	workerlist_t *aux=pool->worker_head;
-	fprintf(stderr,"closepool: allocazione memoria del finaltask\n");
 	while(pool->worker_head!=NULL) {
 		fprintf(stderr,"closepool: loop join thread\n");
 		pthread_join(pool->worker_head->worker,NULL);
@@ -242,7 +227,7 @@ long await_pool_completion(threadpool_t *pool) {
 		aux=pool->worker_head;
 	}
 	free(pool->tasks_head);	//dealloca il task conclusivo
-	fprintf(stderr,"closepool: rimosso task finale\n");
+	//fprintf(stderr,"closepool: rimosso task finale\n");
 	
 	//distruggi mutex e cond
 	if(pthread_mutex_destroy(&pool->worker_mtx))
@@ -261,7 +246,7 @@ long await_pool_completion(threadpool_t *pool) {
 }
 
 threadpool_t *initialize_pool(long pool_size, size_t queue_len, char* socket) {
-	fprintf(stdout,"Pool: parte l'inizializzazione\n");
+	//fprintf(stdout,"Pool: parte l'inizializzazione\n");
 	//controllo valori validi
 	if(pool_size<=0)
 		return NULL;
@@ -319,7 +304,7 @@ threadpool_t *initialize_pool(long pool_size, size_t queue_len, char* socket) {
 		free(pool);
 		return NULL;
 	}
-	fprintf(stderr,"Pool: creati %d thread\n",pool->num_threads);
+	//fprintf(stderr,"Pool: creati %d thread\n",pool->num_threads);
 	pthread_mutex_unlock(&pool->worker_mtx);
 	
 	return pool;

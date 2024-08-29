@@ -19,8 +19,8 @@
 #define MAX_PATHNAME_LEN 1+MAX_NAMELENGTH
 
 //valore pari ad 1 quando parte, settato a zero solo quando viene terminato prima di terminare
-static int running;
-static pthread_mutex_t running_mtx=PTHREAD_MUTEX_INITIALIZER;
+static int mw_running;
+static pthread_mutex_t mw_running_mtx=PTHREAD_MUTEX_INITIALIZER;
 //Contatore di segnali SIGUSR, inizialmente zero
 static int thread_num_change;
 static pthread_mutex_t thread_num_mtx=PTHREAD_MUTEX_INITIALIZER;
@@ -41,9 +41,9 @@ static void *sighandler(void *arg) {
 		if(r!=0) {
 			errno=r;
 			perror("ERRORE FATALE 'sigwait'");
-			pthread_mutex_lock(&running_mtx);
-			running=0;
-			pthread_mutex_unlock(&running_mtx);
+			pthread_mutex_lock(&mw_running_mtx);
+			mw_running=0;
+			pthread_mutex_unlock(&mw_running_mtx);
 			return NULL;
 		}
 		switch(sig) {
@@ -53,21 +53,21 @@ static void *sighandler(void *arg) {
 		case SIGINT:
 		case SIGQUIT:
 		case SIGTERM:
-			pthread_mutex_lock(&running_mtx);
-			running=0;
-			pthread_mutex_unlock(&running_mtx);
+			pthread_mutex_lock(&mw_running_mtx);
+			mw_running=0;
+			pthread_mutex_unlock(&mw_running_mtx);
 			return NULL;
 		
 		case SIGUSR1:	//incrementa di uno i worker
-			pthread_mutex_lock(&running_mtx);
-			running=0;
-			pthread_mutex_unlock(&running_mtx);
+			pthread_mutex_lock(&thread_num_mtx);
+			thread_num_change++;
+			pthread_mutex_unlock(&thread_num_mtx);
 			break;
 		
 		case SIGUSR2:	//decrementa di uno i worker (NB: minimo 1 thread nel pool)
-			pthread_mutex_lock(&running_mtx);
-			running=0;
-			pthread_mutex_unlock(&running_mtx);
+			pthread_mutex_lock(&thread_num_mtx);
+			thread_num_change--;
+			pthread_mutex_unlock(&thread_num_mtx);
 			break;
 		
 		default: ;
@@ -113,10 +113,11 @@ void list_free(node_t *head) {
 void masterworker(int argc, char *argv[], char *socket) {
 	fprintf(stderr,"---MasterWorker Parte---\n");
 	
-	running=1;
+	/*impostazione valori globali*/
+	mw_running=1;
 	thread_num_change=0;
 	
-	//gestione segnali
+	/*gestione segnali*/
 	sigset_t mask;
 	ec_is(sigemptyset(&mask),-1,"masterworker, sigemptyset");
 	ec_is(sigaddset(&mask,SIGHUP),-1,"masterworker, sigaddset SIGHUP");
@@ -126,19 +127,25 @@ void masterworker(int argc, char *argv[], char *socket) {
 	ec_is(sigaddset(&mask,SIGUSR1),-1,"masterworker, sigaddset SIGUSR1");
 	ec_is(sigaddset(&mask,SIGUSR2),-1,"masterworker, sigaddset SIGUSR2");
 	//impostazione della nuova mask
-	ec_isnot(pthread_sigmask(SIG_BLOCK,&mask,NULL),0,"masterworker, pthread_sigmask FATAL ERROR");
+	ec_isnot(pthread_sigmask(SIG_SETMASK,&mask,NULL),0,"masterworker, pthread_sigmask FATAL ERROR");
 	
 	//sigaction per ignorare SIGPIPE
-	struct sigaction s;
-	memset(&s,0,sizeof(s));
-	s.sa_handler=SIG_IGN;
-	ec_is(sigaction(SIGPIPE,&s,NULL),-1,"masterworker, sigaction");
+	struct sigaction master_sa;
+	memset(&master_sa,0,sizeof(master_sa));
+	master_sa.sa_handler=SIG_IGN;
+	ec_is(sigaction(SIGPIPE,&master_sa,NULL),-1,"masterworker, sigaction");
 	
 	//thread detached per la gestione sincrona dei segnali
 	pthread_t sighandler_thread;
 	ec_isnot(pthread_create(&sighandler_thread,NULL,&sighandler,&mask),0,"masterworker, pthread_create sighandler");
 	ec_isnot(pthread_detach(sighandler_thread),0,"masterworker, pthread_detach");
 	//fprintf(stderr,"Masterworker: segnali settati\n");
+	
+	/*
+	//test sigmask
+	if(pthread_kill(sighandler_thread,SIGTERM))
+		perror("master kill");
+	*/
 	
 	//dichiarazione ed iniaizlizzazione delle variabili default. Se necessario verranno sovrascritte
 	long workers=DEFAULT_N;
@@ -220,35 +227,42 @@ void masterworker(int argc, char *argv[], char *socket) {
 		}
 	}
 	//fprintf(stderr,"Masterworker: getopt completata\n");
-	fprintf(stderr,"dim. iniziale threadpool: %ld\nlungh. coda: %ld\nritardo inserimento: %ld secondi\n", workers,queue_length,queue_delay);
+	//fprintf(stderr,"dim. iniziale threadpool: %ld\nlungh. coda: %ld\nritardo inserimento: %ld secondi\n", workers,queue_length,queue_delay);
 
-	//creazione threadpool
+	/*creazione threadpool*/
 	threadpool_t *pool=initialize_pool(workers,queue_length,socket);
 	ec_is(pool,NULL,"masterworker, initialize_pool");
-	fprintf(stderr,"Masterworker: threadpool inizializzato\n");
+	//fprintf(stderr,"Masterworker: threadpool inizializzato\n");
 	
-	//imposta il ritardo di inserimento
+	/*impostazione del ritardo di inserimento*/
 	struct timespec delay_struct, delay_rem;
 	delay_struct.tv_sec=queue_delay/1000;
 	delay_struct.tv_nsec=(queue_delay%1000)*1000000;
 	int sleep_result=0;
-	fprintf(stderr,"Masterworker: ritardo impostato\n");
+	//fprintf(stderr,"Masterworker: ritardo impostato\n");
 
-	/*FILEFINDER*/
-	//ricerca file da linea di comando
+	/*ricerca dei file da linea di comando*/
 	int i;
 	for(i=optind;i<argc;i++) {
 		//fprintf(stderr,"Filefinder: argv[%d] inizia\n",i);
-		if(!running)	//se bisogna chiudere anticipatamente il programma
+		pthread_mutex_lock(&mw_running_mtx);
+		if(!mw_running) {	//se bisogna chiudere anticipatamente il programma
+			fprintf(stderr,"Master: ho preso segnale di chiusura\n");
+			pthread_mutex_unlock(&mw_running_mtx);
 			break;
+		}
+		pthread_mutex_unlock(&mw_running_mtx);
+		
 		//se bisogna cambiare il numero di worker
 		//fprintf(stderr,"Filefinder: argv[%d] prelock add/remove threads\n",i);
 		pthread_mutex_lock(&thread_num_mtx);
-		while(thread_num_change>0) {	
+		while(thread_num_change>0) {
+			fprintf(stderr,"Master: ho preso SIGUSR1\n");
 			add_worker(pool);
 			thread_num_change--;
 		}
 		while(thread_num_change<0) {
+			fprintf(stderr,"Master: ho preso SIGUSR2\n");
 			remove_worker(pool);
 			thread_num_change++;
 		}
@@ -289,18 +303,21 @@ void masterworker(int argc, char *argv[], char *socket) {
 			if(res)	//invio file
 				fprintf(stderr,"Filefinder: argv[%d], enqueue faillita con errore %d",i,res);
 			//fprintf(stderr,"Filefinder: argv[%d] post enqueue\n",i);
-			fprintf(stdout,"Filefinder: inserisco file %s\n",argv[i]);
+			//fprintf(stdout,"Filefinder: inserisco file %s\n",argv[i]);
 		}
 	}
 	
-	//ricerca nelle directory -d
+	/*ricerca dei file dalle directory passate con -d*/
 	char fullpathname[MAX_PATHNAME_LEN];	//stringa per memorizzare il nome completo dei file
 	while(directories!=NULL) {
 		//se bisogna chiudere anticipatamente il programma
-		if(!running) {
+		pthread_mutex_lock(&mw_running_mtx);
+		if(!mw_running) {
+			pthread_mutex_unlock(&mw_running_mtx);
 			list_free(directories);
 			break;	
 		}
+		pthread_mutex_unlock(&mw_running_mtx);
 		//se bisogna cambiare il numero di worker
 		pthread_mutex_lock(&thread_num_mtx);
 		while(thread_num_change>0) {	
@@ -324,17 +341,20 @@ void masterworker(int argc, char *argv[], char *socket) {
 			//controllo errno
 			if(errno!=0) {
 				fprintf(stderr,"Errore nell'apertura di %s\n",directories->name);
-				ec_isnot(pthread_mutex_lock(&running_mtx),0,"masterworker, mutex lock in dirsearch");
-				running=0;
-				ec_isnot(pthread_mutex_unlock(&running_mtx),0,"masterworker, mutex unlock in dirsearch");
+				ec_isnot(pthread_mutex_lock(&mw_running_mtx),0,"masterworker, mutex lock in dirsearch");
+				mw_running=0;
+				ec_isnot(pthread_mutex_unlock(&mw_running_mtx),0,"masterworker, mutex unlock in dirsearch");
 				break;
 			}
 			//controllo se sono arrivati segnali di arresto
-			if(!running) {
+			pthread_mutex_lock(&mw_running_mtx);
+			if(!mw_running) {
 				//libera lo spazio delle directory successive, quella corrente viene liberata dopo il while
 				list_free(directories->next);
+				pthread_mutex_unlock(&mw_running_mtx);
 				break;
 			}
+			pthread_mutex_unlock(&mw_running_mtx);
 			//se bisogna cambiare il numero di worker
 			pthread_mutex_lock(&thread_num_mtx);
 			while(thread_num_change>0) {	
@@ -351,7 +371,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 				continue;	//vai al prossimo file
 				
 			else if(file->d_type==DT_DIR) {	//trovata directory
-				fprintf(stdout,"trovata directory %s\n",file->d_name);
+				//fprintf(stdout,"trovata directory %s\n",file->d_name);
 				dirs_add(&directories,file->d_name,directories->name);	//aggiunta in coda, scorrimento breadth-first
 			}
 			
@@ -391,8 +411,9 @@ void masterworker(int argc, char *argv[], char *socket) {
 		directories=directories->next;
 		free(aux);
 	}
-	fprintf(stderr,"masterworker: filefinder termina\n");
-	//master non inserisce piu' file in coda e attende che il threadpool termini 
+	//fprintf(stderr,"masterworker: filefinder termina\n");
+	
+	/*master non inserisce piu' file in coda e attende che il threadpool termini*/
 	long finalworkers=await_pool_completion(pool);
 	if(finalworkers<1)
 		fprintf(stderr,"masterworker, await_pool_completion resituisce numero non valido di thread\n");
@@ -402,14 +423,14 @@ void masterworker(int argc, char *argv[], char *socket) {
 			perror("masterworker, fopen nworkeratexit");
 		else {
 			fprintf(workers_file,"%ld\n",finalworkers);	//inserisci il numero di thread alla fine
-			fprintf(stderr,"Masterworker: ricevuti %ld worker\n",finalworkers);
+			//fprintf(stderr,"Masterworker: ricevuti %ld worker\n",finalworkers);
 			fclose(workers_file);
 		}
 	}
-	fprintf(stderr,"Masterworker: threadpool ha concluso il suo lavoro\n");
+	//fprintf(stderr,"Masterworker: threadpool ha concluso il suo lavoro\n");
 	
-	//chiusura forzata del signal handler thread
-	if(running) 
+	/*chiusura forzata del signal handler thread*/
+	if(mw_running) 
 		ec_isnot(pthread_kill(sighandler_thread,SIGQUIT),0,"masterworker, pthread_kill di signal handler");
-	fprintf(stderr,"Masterworker: chiusura\n");
+	//fprintf(stderr,"Masterworker: chiusura\n");
 }

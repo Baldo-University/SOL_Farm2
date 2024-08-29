@@ -30,7 +30,7 @@ int main(int argc, char *argv[]) {
 	sigset_t mask, oldmask;	//mask e' la nuova maschera, oldmask e' quella corrente
 	//prepara maschera che blocca tutti i segnali
 	ec_is(sigfillset(&mask),-1,"main, sigfillsset");
-	//setta suddetta maschera sul thread corrente e salva in oldmask la maschera precedente
+	//setta la suddetta maschera sul thread corrente e salva in oldmask la maschera precedente
 	ec_is(pthread_sigmask(SIG_SETMASK,&mask,&oldmask),-1,"main, pthread_sigmask pre-fork")
 	
 	//Si crea un processo figlio con fork(), il quale lancera' collector.
@@ -55,8 +55,8 @@ int main(int argc, char *argv[]) {
 	int collector_status;
 	collector=waitpid(collector,&collector_status,0);
 	if(WIFEXITED(collector_status))
-		fprintf(stderr,"Stato collector:%d\n",WEXITSTATUS(collector_status));
+		fprintf(stderr,"Stato collector: %d\n",WEXITSTATUS(collector_status));
 	
-	fprintf(stdout,"Fine programma\n");
+	fprintf(stderr,"Fine programma\n");
 	return 0;
 }
