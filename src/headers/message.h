@@ -9,4 +9,4 @@
 		char pathname[MAX_PATHNAME_LEN];
 	} result_path_t;
 	
-#endif MESSAGE
+#endif
