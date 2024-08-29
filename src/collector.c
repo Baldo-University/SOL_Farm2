@@ -7,9 +7,20 @@ TODO timer ogni secondo per la stampa dei risultati parziali
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <time.h>
 
 #include "message.h"
 #include "utils.h"
+
+//mutex della lista dei risultati
+pthread_mutex_t results_mtx=PTHREAD_MUTEX_INITIALIZER;
+
+/*Funzione thread che stampa la lista incompleta di risultati ogni secondo*/
+static void *part_print(void *arg) {
+	
+}
 
 /*Main del collector*/
 int main(int argc, char *argv[]) {
@@ -36,6 +47,15 @@ int main(int argc, char *argv[]) {
 	ec_is(sigaction(SIGUSR1,&collector_sa,NULL),-1,"collector, sigaddset SIGUSR1");
 	ec_is(sigaction(SIGUSR2,&collector_sa,NULL),-1,"collector, sigaddset SIGUSR2");
 	ec_is(sigaction(SIGPIPE,&collector_sa,NULL),-1,"collector, sigaddset SIGPIPE");
+	
+	/*Lista dei risultati*/
+	result *results=NULL;
+	
+	/*Creazione del thread che stampa la lista ogni secondo*/
+	pthread_t printer_thread;
+	ec_isnot(pthread_create(&printer_thread,NULL,&part_print,(void*)results),0,"collector, pthread_create printer_thread");
+	
+	fprintf(stderr,"Collector creato\n");
 	
 	return 0;
 }
