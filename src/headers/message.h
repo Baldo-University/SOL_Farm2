@@ -4,9 +4,9 @@
 	#define MAX_PATHNAME_LEN 256
 	
 	//struct del tipo di messaggio che un worker deve inviare al collector
-	typedef struct result_path {
-		long result;
+	typedef struct result {
+		long total;
 		char pathname[MAX_PATHNAME_LEN];
-	} result_path_t;
+	} result_t;
 	
 #endif
