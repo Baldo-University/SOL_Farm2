@@ -1,28 +1,89 @@
 /*
 Questa sezione di codice contiene la parte del processo Collector
-
-TODO timer ogni secondo per la stampa dei risultati parziali
 */
 
+#include <poll.h>
 #include <pthread.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/types.h>
+#include <string.h>
 #include <sys/socket.h>
+#include <sys/types.h>
 #include <time.h>
 
 #include "message.h"
 #include "utils.h"
 
+#define POLL_SIZE 32		//dimensione degli incrementi lineari di poll
+#define POLL_TIMEOUT 10000	//timeout di poll() in ms
+
 //mutex della lista dei risultati
 pthread_mutex_t results_mtx=PTHREAD_MUTEX_INITIALIZER;
 
-/*Funzione thread che stampa la lista incompleta di risultati ogni secondo*/
-static void *part_print(void *arg) {
-	
+//Stampa lista dei risultati
+void printlist(result_t *list) {
+	result_t *aux=list;
+	pthread_mutex_lock(&results_mtx);
+	while(aux!=NULL) {
+		fprintf(stdout,"%ld\t%s\n",aux->total,aux->pathname);
+		aux=aux->next;
+	}
+	pthread_mutex_unlock(&results_mtx);
 }
 
-/*Main del collector*/
+//Funzione thread che stampa la lista incompleta di risultati ogni secondo
+static void *part_print(void *arg) {
+	result_t *list=(result_t*)arg;
+	struct timespec print, print_rem;
+	print.tv_sec=1;
+	print.tv_nsec=0;
+	int sleep_result=0;
+	/* TODO trova modo per chiudere il thread
+	for(;;) {
+		if(sleep_result==0) {
+			sleep_result=nanosleep(&print,&print_rem);
+			if(sleep_result!=0 && errno!=EINTR)	//errore diverso da interruzione
+				break;
+		}
+		else {
+			sleep_result=nanosleep(&print_rem,&print_rem);
+			printlist();
+		}
+	}
+	*/
+	return NULL;
+}
+
+//Inserimento ordinato nella lista dei risultati
+void list_insert(result_t *list, result_t *newnode) {
+	pthread_mutex_lock(&results_mtx);
+	if(list==NULL) {	//inserimento in lista vuota
+		newnode->next=NULL;
+		list=newnode;
+	}
+	else {
+		if(list->next==NULL) {	//coda ad un solo elemento
+			if(list->total>newnode->total) {	//nuovo elemento strettamente minore
+				newnode->next=list;
+				list=newnode;
+			}
+			else {	//nuovo elemento uguale o maggiore
+				newnode->next=NULL;
+				list->next=newnode;
+			}
+		}
+		else {	//coda con almeno due elementi
+			result_t *aux=list;
+			while(aux->next!=NULL && aux->total<newnode->total)	//scorri le posizioni
+				aux=aux->next;
+			newnode->next=aux->next;
+			aux->next=newnode;
+		}
+	}
+	pthread_mutex_unlock(&results_mtx);
+}
+
 int main(int argc, char *argv[]) {
 	/*controllo argomenti*/
 	if(argc!=2) {	//al collector deve essere passato solo il nome della socket
@@ -38,7 +99,7 @@ int main(int argc, char *argv[]) {
 	ec_isnot(pthread_sigmask(SIG_SETMASK,&mask,NULL),0,"collector, pthread_sigmask");
 	//blocca i segnali specificati
 	struct sigaction collector_sa;
-	memset(&collecotr_sa,0,sizeof(collector_sa));
+	memset(&collector_sa,0,sizeof(collector_sa));
 	collector_sa.sa_handler=SIG_IGN;	//i segnali vengono ignorati dal collector
 	ec_is(sigaction(SIGHUP,&collector_sa,NULL),-1,"collector, sigaddset SIGHUP");
 	ec_is(sigaction(SIGINT,&collector_sa,NULL),-1,"collector, sigaddset SIGINT");
@@ -48,14 +109,58 @@ int main(int argc, char *argv[]) {
 	ec_is(sigaction(SIGUSR2,&collector_sa,NULL),-1,"collector, sigaddset SIGUSR2");
 	ec_is(sigaction(SIGPIPE,&collector_sa,NULL),-1,"collector, sigaddset SIGPIPE");
 	
-	/*Lista dei risultati*/
-	result *results=NULL;
+	long clients_num=0;	//numero totale di client connessi
+	result_t *results=NULL;	//lista dei risultati
 	
 	/*Creazione del thread che stampa la lista ogni secondo*/
 	pthread_t printer_thread;
 	ec_isnot(pthread_create(&printer_thread,NULL,&part_print,(void*)results),0,"collector, pthread_create printer_thread");
+	//fprintf(stderr,"Collector creato\n");
 	
-	fprintf(stderr,"Collector creato\n");
+	/*Setup connessione*/
+	int fd_skt, fd_c, fd_num=0, fd;
+	char *buf;
+	ec_is(buf=malloc(sizeof(result_t)),NULL,"collector, malloc buffer messaggi");
+	struct sockaddr_un sa;
+	strncpy(sa.sun_path,argv[1],UNIX_PATH_MAX);
+	sa.sun_family=AF_UNIX;
+	ec_is(fd_skt=socket(AF_UNIX,SOCK_STREAM,0),-1,"collector, socket");
+	ec_is(bind(fd_skt,(struct sockaddr*)&sa,sizeof(sa)),-1,"collector, bind");
+	ec_is(listen(fd_skt,SOMAXCONN),-1,"collector, listen");
+	
+	/*Setup poll*/
+	struct pollfd *pfds;
+	int poll_size=POLL_SIZE;	//dimensione iniziale del poll array
+	int nfds=1;					//numero di fd su coi fare poll() al momento del lancio
+	int poll_ret=0;				//restituito da poll(), numero di elementi di pfds con un evento o un errore
+	ec_is(pfds=calloc(poll_size,sizeof(struct pollfd)),NULL,"collector, calloc pollfd");
+	pfds[0].fd=fd_skt;		//poll prende come primo elemento il socket di ascolto di nuove connessioni
+	pfds[0].events=POLLIN;	//lettura dati
+	
+	/*loop di poll*/
+	for(;;) {
+		ec_is(poll_ret=poll(pfds,nfds,POLL_TIMEOUT),-1,"collector, poll");
+		if(poll_ret==0) {
+			fprintf(stderr,"Raggiunto timeout\n");
+			break;
+		}
+		
+		int i;
+		for(i=0;i<nfds;i++) {
+			if(pfds[i].revents==0)	//nessun evento/errore
+				continue;
+			if(pfds[i].revents & POLLIN)	//errore
+				fprintf(stderr,"aiuto\n");
+			if(pfds[i].fd==fd_skt) {	//ricevuta richiesta di nuova connessione client
+				fprintf(stderr,"Collector: richiesta nuova connessione\n");
+				
+			}
+			else {	//ricevuti dati da client
+				
+			}
+		}
+	}
+	
 	
 	return 0;
 }
