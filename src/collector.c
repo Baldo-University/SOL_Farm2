@@ -115,10 +115,9 @@ int main(int argc, char *argv[]) {
 	/*Creazione del thread che stampa la lista ogni secondo*/
 	pthread_t printer_thread;
 	ec_isnot(pthread_create(&printer_thread,NULL,&part_print,(void*)results),0,"collector, pthread_create printer_thread");
-	//fprintf(stderr,"Collector creato\n");
 	
 	/*Setup connessione*/
-	int fd_skt, fd_c, fd_num=0, fd;
+	int fd_skt, fd_c;	//socket di server e di client
 	char *buf;
 	ec_is(buf=malloc(sizeof(result_t)),NULL,"collector, malloc buffer messaggi");
 	struct sockaddr_un sa;
@@ -137,6 +136,8 @@ int main(int argc, char *argv[]) {
 	pfds[0].fd=fd_skt;		//poll prende come primo elemento il socket di ascolto di nuove connessioni
 	pfds[0].events=POLLIN;	//lettura dati
 	
+	fprintf(stderr,"Collector creato\n");
+	
 	/*loop di poll*/
 	for(;;) {
 		ec_is(poll_ret=poll(pfds,nfds,POLL_TIMEOUT),-1,"collector, poll");
@@ -153,7 +154,36 @@ int main(int argc, char *argv[]) {
 				fprintf(stderr,"aiuto\n");
 			if(pfds[i].fd==fd_skt) {	//ricevuta richiesta di nuova connessione client
 				fprintf(stderr,"Collector: richiesta nuova connessione\n");
-				
+				do {
+					fd_c=accept(fd_skt,NULL,0);
+					if(fd_c<0) {
+						if(errno==EAGAIN || errno=EWOULDBLOCK)	//controllo per portabilita'
+							errno=0;
+						else
+							perror("collector, accept nel loop");
+					}
+					else {
+						fprintf(stderr,"Collector: accettato client con fd %d\n",fd_c);
+						int reallocable=1;		//per indicare se abbiamo spazio in memoria per allargare poll
+						if(nfds+1==poll_size) {	//controlla che ci sia spazio nel poll_size	
+							fprintf(stderr,"Collector: poll piena\n");
+							pfds=realloc(pfds(poll_size+POLL_SIZE)*sizeof(struct pollfd));
+							if(errno==ENOMEN) {	//errore di memoria terminata
+								perror("collector, realloc in loop");
+								reallocable=0;
+							}
+							else {
+								memset(pfds+POLL_SIZE,0,POLL_SIZE);	//necessaria, realloc non la fa automaticamente
+								poll_size+=POLL_SIZE;
+							}
+						}
+						if(reallocable) {
+							pfds[nfds].fd=fd_c;	//si salva il socket del client in una posizione vuota di poll
+							pfds[nfds].events=POLLIN;	//aperto alla lettura di dati
+							nfds++;
+						}
+					}
+				} while(fd_c>=0);
 			}
 			else {	//ricevuti dati da client
 				
