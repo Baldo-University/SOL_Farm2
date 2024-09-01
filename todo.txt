@@ -1,4 +1,4 @@
-resta da fare collector e tutta la parte relativa alla connessione
-aiuto
+stabilire il formato dei messaggi inviati al collector
+l'idea e': 256 byte di pathname + 8 byte di long inviati in una stringa di char
 
 nota: se gli errori si rompono prova a mettere SIG_BLOCK invece di SIG_SETMASK nella maschera del master
