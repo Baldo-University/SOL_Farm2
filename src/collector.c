@@ -11,19 +11,27 @@ Questa sezione di codice contiene la parte del processo Collector
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <time.h>
+#include <unistd.h>
 
 #include "message.h"
 #include "utils.h"
 
 #define POLL_SIZE 32		//dimensione degli incrementi lineari di poll
 #define POLL_TIMEOUT 10000	//timeout di poll() in ms
+#define BUFFER_SIZE 512		//dimensione del buffer di ricevimento
 
 //mutex della lista dei risultati
 pthread_mutex_t results_mtx=PTHREAD_MUTEX_INITIALIZER;
 
+typedef struct result_list {
+	long total;
+	char pathname[MAX_PATHNAME_LEN];
+	struct result_list *next;
+} result_list_t;
+
 //Stampa lista dei risultati
-void printlist(result_t *list) {
-	result_t *aux=list;
+void printlist(result_list_t *list) {
+	result_list_t *aux=list;
 	pthread_mutex_lock(&results_mtx);
 	while(aux!=NULL) {
 		fprintf(stdout,"%ld\t%s\n",aux->total,aux->pathname);
@@ -34,7 +42,7 @@ void printlist(result_t *list) {
 
 //Funzione thread che stampa la lista incompleta di risultati ogni secondo
 static void *part_print(void *arg) {
-	result_t *list=(result_t*)arg;
+	result_list_t *list=(result_list_t*)arg;
 	struct timespec print, print_rem;
 	print.tv_sec=1;
 	print.tv_nsec=0;
@@ -56,7 +64,7 @@ static void *part_print(void *arg) {
 }
 
 //Inserimento ordinato nella lista dei risultati
-void list_insert(result_t *list, result_t *newnode) {
+void list_insert(result_list_t *list, result_list_t *newnode) {
 	pthread_mutex_lock(&results_mtx);
 	if(list==NULL) {	//inserimento in lista vuota
 		newnode->next=NULL;
@@ -74,7 +82,7 @@ void list_insert(result_t *list, result_t *newnode) {
 			}
 		}
 		else {	//coda con almeno due elementi
-			result_t *aux=list;
+			result_list_t *aux=list;
 			while(aux->next!=NULL && aux->total<newnode->total)	//scorri le posizioni
 				aux=aux->next;
 			newnode->next=aux->next;
@@ -109,17 +117,17 @@ int main(int argc, char *argv[]) {
 	ec_is(sigaction(SIGUSR2,&collector_sa,NULL),-1,"collector, sigaddset SIGUSR2");
 	ec_is(sigaction(SIGPIPE,&collector_sa,NULL),-1,"collector, sigaddset SIGPIPE");
 	
-	long clients_num=0;	//numero totale di client connessi
-	result_t *results=NULL;	//lista dei risultati
+	/*Setup variabili per il funzionamento del collector*/
+	long clients_num=0;				//numero totale di client connessi
+	result_list_t *results=NULL;	//lista dei risultati
+	char buf[BUFFER_SIZE];			//buffer per salvare i dati client
 	
 	/*Creazione del thread che stampa la lista ogni secondo*/
 	pthread_t printer_thread;
 	ec_isnot(pthread_create(&printer_thread,NULL,&part_print,(void*)results),0,"collector, pthread_create printer_thread");
 	
 	/*Setup connessione*/
-	int fd_skt, fd_c;	//socket di server e di client
-	char *buf;
-	ec_is(buf=malloc(sizeof(result_t)),NULL,"collector, malloc buffer messaggi");
+	int fd_skt, fd_c;		//socket di server e di client
 	struct sockaddr_un sa;
 	strncpy(sa.sun_path,argv[1],UNIX_PATH_MAX);
 	sa.sun_family=AF_UNIX;
@@ -186,7 +194,25 @@ int main(int argc, char *argv[]) {
 				} while(fd_c>=0);
 			}
 			else {	//ricevuti dati da client
+				fprintf(stderr,"Collector: ricevuto risultato da client %d\n",pfds[i].fd);
+				int already_read=0;				//mantiene la posizione dell'ultimo byte letto
+				int just_read;					//byte letti con read()
+				int to_read=sizeof(result_t);	//byte restanti da leggere
+				while(to_read>0) {	//lettura
+					reading=read(pfds[i].fd,&(buf[already_read]),to_read);
+					if(just_read<0) 
+						perror("collector, read");
+					already_read+=just_read;
+					to_read-=just_read;
+				}
+				if(to_read>0)
+					perror("collector, read non completata");
 				
+				result_t *temp;		//copia lato server del risultato
+				ec_is(temp=(result_t*)malloc(sizeof(result_t)),NULL,"collector, allocazione memoria temp");
+				//strncpy(temp->total,buf,sizeof(temp->name));
+				
+				free(temp);
 			}
 		}
 	}

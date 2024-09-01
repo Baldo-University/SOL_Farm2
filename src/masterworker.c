@@ -235,9 +235,9 @@ void masterworker(int argc, char *argv[], char *socket) {
 	//fprintf(stderr,"Masterworker: threadpool inizializzato\n");
 	
 	/*impostazione del ritardo di inserimento*/
-	struct timespec delay_struct, delay_rem;
-	delay_struct.tv_sec=queue_delay/1000;
-	delay_struct.tv_nsec=(queue_delay%1000)*1000000;
+	struct timespec delay, delay_rem;
+	delay.tv_sec=queue_delay/1000;
+	delay.tv_nsec=(queue_delay%1000)*1000000;
 	int sleep_result=0;
 	//fprintf(stderr,"Masterworker: ritardo impostato\n");
 
@@ -280,10 +280,10 @@ void masterworker(int argc, char *argv[], char *socket) {
 		if(!S_ISREG(info.st_mode))
 			fprintf(stderr,"Passato file %s non regolare da linea di comando, scartato.\n",argv[i]);
 		else {
-			fprintf(stderr,"Filefinder: argv[%d] inserimento\n",i);
+			//fprintf(stderr,"Filefinder: argv[%d] inserimento\n",i);
 			//ritardo di inserimento (versione basic)
 			if(sleep_result==0) {	//attesa completa
-				sleep_result=nanosleep(&delay_struct,&delay_rem);
+				sleep_result=nanosleep(&delay,&delay_rem);
 				if(sleep_result==-1) {	//errore
 					if(errno==EINTR)	//verifica se nanosleep interrotto da segnale
 						errno=0;
@@ -378,7 +378,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 			else if(file->d_type==DT_REG) {	//trovato file normale
 				//ritardo di inserimento (da rifare TODO)
 				if(sleep_result==0) {	//attesa completa
-					sleep_result=nanosleep(&delay_struct,&delay_rem);
+					sleep_result=nanosleep(&delay,&delay_rem);
 					if(sleep_result==-1) {	//errore
 						if(errno==EINTR)	//verifica se nanosleep interrotto da segnale
 							errno=0;
@@ -397,7 +397,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 				memset(fullpathname,0,MAX_PATHNAME_LEN);
 				snprintf(fullpathname,MAX_PATHNAME_LEN,"%s/%s",directories->name,file->d_name);
 				enqueue_task(pool,fullpathname);	//invio file
-				fprintf(stdout,"Filefinder: inserisco file %s\n",fullpathname);
+				//fprintf(stdout,"Filefinder: inserisco file %s\n",fullpathname);
 			}
 			
 			else if(file->d_type==DT_UNKNOWN)

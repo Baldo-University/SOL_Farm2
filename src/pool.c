@@ -13,12 +13,16 @@ usa per inserire task in coda.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include "message.h"
 #include "pool.h"
 #include "utils.h"
 #include "workfun.h"
+
+#define BUFFER_SIZE 512		//dimensione del buffer di invio dati
 
 //linked list di thread worker
 struct workerlist {
@@ -46,7 +50,24 @@ static void *thread_func(void *arg) {
 	
 	//fprintf(stderr,"Worker %d: inizializzato, pronto a svolgere task\n",id);
 	
-	//connessione al collector TODO
+	/*Setup connessione*/
+	int fd_skt;
+	struct sockaddr_un sa;
+	strncpy(sa.sun_path,pool->socket,UNIX_PATH_MAX);
+	sa.sun_family=AF_UNIX;
+	if((fd_skt=socket(AF_UNIX,SOCK_STREAM,0))==-1) {
+		perror("worker, socket");
+		pthread_exit((void*)NULL);
+	}
+	//loop connessione
+	while(connect(fd_skt,(struct sockaddr*)&sa,sizeof(sa))==-1) {
+		if(errno==ENOENT)	//non esiste nessun socket in ascolto
+			sleep(1);
+		else {
+			perror("worker, connect");
+			pthread_exit((void*)NULL);
+		}
+	}
 	
 	pthread_mutex_lock(&pool->worker_mtx);
 	pool->started_threads++;	//il thread viene contato come partito
@@ -90,12 +111,14 @@ static void *thread_func(void *arg) {
 		result=workfun(taskname);
 		if(result<0)
 			fprintf(stderr,"Worker %d: errore di workfun %ld\n",id,result);
-		else
-			fprintf(stderr,"Worker %d: il risultato di %s e' %ld\n",id,taskname,result);
-		//invio al collector TODO
+		else {
+			//fprintf(stderr,"Worker %d: il risultato di %s e' %ld\n",id,taskname,result);
+			//invio al collector
+		}
 	}
 	
-	//disconnessione dal collector TODO
+	close(fd_skt);	//disconnessione dal collector
+	
 	//fprintf(stderr,"worker %d: uscita\n",id);
 	pthread_exit((void*)NULL);
 }
@@ -192,7 +215,7 @@ long await_pool_completion(threadpool_t *pool) {
 		fprintf(stderr,"pool, await_pool_completion su threadpool non inizializzato\n");
 		return -1;
 	}
-	fprintf(stderr,"closepool: inizio\n");
+	//fprintf(stderr,"closepool: inizio\n");
 	//salva il numero di worker al momento della chiamata
 	pthread_mutex_lock(&pool->worker_mtx);
 	long workersatexit=pool->num_threads;
@@ -220,7 +243,7 @@ long await_pool_completion(threadpool_t *pool) {
 	//dealloca i worker
 	workerlist_t *aux=pool->worker_head;
 	while(pool->worker_head!=NULL) {
-		fprintf(stderr,"closepool: loop join thread\n");
+		//fprintf(stderr,"closepool: loop join thread\n");
 		pthread_join(pool->worker_head->worker,NULL);
 		pool->worker_head=pool->worker_head->next;
 		free(aux);
