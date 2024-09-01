@@ -1,7 +1,10 @@
 #ifndef MESSAGE
 	#define MESSAGE
 	
-	#define MAX_PATHNAME_LEN 256
+	#include "utils.h"
+	
+	#define MAX_PATHNAME_LEN 1+MAX_NAMELENGTH
+	#define BUFFER_SIZE 512		//dimensione del buffer di invio dati
 	
 	//struct del tipo di messaggio che un worker deve inviare al collector
 	typedef struct result {
