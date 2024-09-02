@@ -9,20 +9,23 @@ Il threadpool mantiene la coda di produzione e in questo file sono contenute le 
 usa per inserire task in coda.
 */
 
+#include <errno.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/un.h>
 #include <unistd.h>
 
-#include "message.h"
 #include "pool.h"
 #include "utils.h"
 #include "workfun.h"
 
-#define BUFFER_SIZE 512		//dimensione del buffer di invio dati
+#define MAX_PATHNAME_LEN 1+MAX_NAMELENGTH	//lunghezza massima pathname file di task
+#define UNIX_PATH_MAX 108	//lunghezza massima pathname socket
+#define BUFFER_SIZE 320		//dimensione del buffer di invio dati
 
 //linked list di thread worker
 struct workerlist {
@@ -44,7 +47,7 @@ static void *thread_func(void *arg) {
 	pthread_mutex_lock(&pool->worker_mtx);
 	unsigned int id=++pool->threadID;
 	pthread_mutex_unlock(&pool->worker_mtx);
-	char taskname[MAX_PATHNAME_LEN];	//nome del task consumato dalla coda
+	char buf[BUFFER_SIZE];	//buffer che contiene il nome del task e, successivamente, il risultato di workfun()
 	long result=0;			//risultato della funzione workfun()
 	tasklist_t *aux=NULL;	//puntatore ausiliario per l'eliminazione di task dalla coda
 	
@@ -84,7 +87,7 @@ static void *thread_func(void *arg) {
 			break;
 		}
 		pthread_mutex_unlock(&pool->worker_mtx);
-		memset(taskname,0,MAX_PATHNAME_LEN);	//rimuove il task precedente
+		memset(buf,0,BUFFER_SIZE);	//ripulisce il buffer
 		pthread_mutex_lock(&pool->task_mtx);
 		while(pool->tasks_head==NULL) {	//nessun task in coda
 			//fprintf(stdout,"worker %d: nessun task in coda\n",id);
@@ -97,7 +100,7 @@ static void *thread_func(void *arg) {
 			break;
 		}
 		//thread prende ed esegue il task
-		strncpy(taskname,pool->tasks_head->task,MAX_PATHNAME_LEN);
+		strncpy(buf,pool->tasks_head->task,MAX_PATHNAME_LEN);	//copia il filename fino a un max di 256 byte
 		aux=pool->tasks_head;
 		pool->tasks_head=pool->tasks_head->next;
 		pool->cur_queue_size--;
@@ -108,12 +111,17 @@ static void *thread_func(void *arg) {
 		free(aux);
 		pthread_cond_signal(&pool->full_queue_cond); //segnala la presenza di spazio libero nella coda
 		pthread_mutex_unlock(&pool->task_mtx);
-		result=workfun(taskname);
-		if(result<0)
+		result=workfun(buf);	//invoca workfun(), chiamato sul buffer che contiene solo il nome del task
+		if(result<0) {	//errore nell'inovcazione di workfun
 			fprintf(stderr,"Worker %d: errore di workfun %ld\n",id,result);
-		else {
-			//fprintf(stderr,"Worker %d: il risultato di %s e' %ld\n",id,taskname,result);
-			//invio al collector
+			continue;
+		}
+		//fprintf(stderr,"Worker %d: il risultato di %s e' %ld\n",id,buf,result);
+		
+		/*invio al collector*/
+		//salva il risultato di workfun() nel buffer per completare il messaggio
+		memcpy(buf+MAX_PATHNAME_LEN,&(result),sizeof(long));
+		//TODO WRITE
 		}
 	}
 	

@@ -2,6 +2,7 @@
 Questa sezione di codice contiene la parte del processo Collector
 */
 
+#include <errno.h>
 #include <poll.h>
 #include <pthread.h>
 #include <signal.h>
@@ -10,12 +11,14 @@ Questa sezione di codice contiene la parte del processo Collector
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/un.h>
 #include <time.h>
 #include <unistd.h>
 
-#include "message.h"
 #include "utils.h"
 
+#define MAX_PATHNAME_LEN 1+MAX_NAMELENGTH
+#define UNIX_PATH_MAX 108	//lunghezza massima pathname socket
 #define POLL_SIZE 32		//dimensione degli incrementi lineari di poll
 #define POLL_TIMEOUT 10000	//timeout di poll() in ms
 #define BUFFER_SIZE 512		//dimensione del buffer di ricevimento
@@ -23,15 +26,15 @@ Questa sezione di codice contiene la parte del processo Collector
 //mutex della lista dei risultati
 pthread_mutex_t results_mtx=PTHREAD_MUTEX_INITIALIZER;
 
-typedef struct result_list {
+typedef struct result {
 	long total;
 	char pathname[MAX_PATHNAME_LEN];
-	struct result_list *next;
-} result_list_t;
+	struct result *next;
+} result_t;
 
 //Stampa lista dei risultati
-void printlist(result_list_t *list) {
-	result_list_t *aux=list;
+void printlist(result_t *list) {
+	result_t *aux=list;
 	pthread_mutex_lock(&results_mtx);
 	while(aux!=NULL) {
 		fprintf(stdout,"%ld\t%s\n",aux->total,aux->pathname);
@@ -39,10 +42,9 @@ void printlist(result_list_t *list) {
 	}
 	pthread_mutex_unlock(&results_mtx);
 }
-
 //Funzione thread che stampa la lista incompleta di risultati ogni secondo
 static void *part_print(void *arg) {
-	result_list_t *list=(result_list_t*)arg;
+	result_t *list=(result_t*)arg;
 	struct timespec print, print_rem;
 	print.tv_sec=1;
 	print.tv_nsec=0;
@@ -64,7 +66,7 @@ static void *part_print(void *arg) {
 }
 
 //Inserimento ordinato nella lista dei risultati
-void list_insert(result_list_t *list, result_list_t *newnode) {
+void list_insert(result_t *list, result_t *newnode) {
 	pthread_mutex_lock(&results_mtx);
 	if(list==NULL) {	//inserimento in lista vuota
 		newnode->next=NULL;
@@ -82,7 +84,7 @@ void list_insert(result_list_t *list, result_list_t *newnode) {
 			}
 		}
 		else {	//coda con almeno due elementi
-			result_list_t *aux=list;
+			result_t *aux=list;
 			while(aux->next!=NULL && aux->total<newnode->total)	//scorri le posizioni
 				aux=aux->next;
 			newnode->next=aux->next;
@@ -119,7 +121,7 @@ int main(int argc, char *argv[]) {
 	
 	/*Setup variabili per il funzionamento del collector*/
 	long clients_num=0;				//numero totale di client connessi
-	result_list_t *results=NULL;	//lista dei risultati
+	result_t *results=NULL;	//lista dei risultati
 	char buf[BUFFER_SIZE];			//buffer per salvare i dati client
 	
 	/*Creazione del thread che stampa la lista ogni secondo*/
@@ -143,7 +145,6 @@ int main(int argc, char *argv[]) {
 	ec_is(pfds=calloc(poll_size,sizeof(struct pollfd)),NULL,"collector, calloc pollfd");
 	pfds[0].fd=fd_skt;		//poll prende come primo elemento il socket di ascolto di nuove connessioni
 	pfds[0].events=POLLIN;	//lettura dati
-	
 	fprintf(stderr,"Collector creato\n");
 	
 	/*loop di poll*/
@@ -165,7 +166,7 @@ int main(int argc, char *argv[]) {
 				do {
 					fd_c=accept(fd_skt,NULL,0);
 					if(fd_c<0) {
-						if(errno==EAGAIN || errno=EWOULDBLOCK)	//controllo per portabilita'
+						if(errno==EAGAIN || errno==EWOULDBLOCK)	//controllo per portabilita'
 							errno=0;
 						else
 							perror("collector, accept nel loop");
@@ -175,8 +176,8 @@ int main(int argc, char *argv[]) {
 						int reallocable=1;		//per indicare se abbiamo spazio in memoria per allargare poll
 						if(nfds+1==poll_size) {	//controlla che ci sia spazio nel poll_size	
 							fprintf(stderr,"Collector: poll piena\n");
-							pfds=realloc(pfds(poll_size+POLL_SIZE)*sizeof(struct pollfd));
-							if(errno==ENOMEN) {	//errore di memoria terminata
+							pfds=(struct pollfd*)realloc(pfds,(poll_size+(int)POLL_SIZE)*sizeof(struct pollfd));
+							if(errno==ENOMEM) {	//errore di memoria terminata
 								perror("collector, realloc in loop");
 								reallocable=0;
 							}
@@ -199,7 +200,7 @@ int main(int argc, char *argv[]) {
 				int just_read;					//byte letti con read()
 				int to_read=sizeof(result_t);	//byte restanti da leggere
 				while(to_read>0) {	//lettura
-					reading=read(pfds[i].fd,&(buf[already_read]),to_read);
+					just_read=read(pfds[i].fd,&(buf[already_read]),to_read);
 					if(just_read<0) 
 						perror("collector, read");
 					already_read+=just_read;
@@ -216,7 +217,6 @@ int main(int argc, char *argv[]) {
 			}
 		}
 	}
-	
 	
 	return 0;
 }
