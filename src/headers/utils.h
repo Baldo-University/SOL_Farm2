@@ -10,4 +10,12 @@
 	//test che controlla se il valore restituito e' diverso da un valore di errore
 	#define ec_isnot(res,val,txt) \
 		if((res)!=val) {perror(txt); exit(EXIT_FAILURE);}
+		
+	//stampe di debug
+	#ifdef DEBUG
+		#define DEBUG(FMT, ...)	fprintf(stderr,FMT,__VA_ARGS__)
+	#else
+		#define DEBUG(FMT, ...)
+	#endif
+	
 #endif
