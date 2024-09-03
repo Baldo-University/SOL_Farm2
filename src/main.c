@@ -57,6 +57,6 @@ int main(int argc, char *argv[]) {
 	if(WIFEXITED(collector_status))
 		fprintf(stderr,"Stato collector: %d\n",WEXITSTATUS(collector_status));
 	
-	fprintf(stderr,"Fine programma\n");
+	DEBUG("Fine programma\n");
 	return 0;
 }

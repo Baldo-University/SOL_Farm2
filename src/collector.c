@@ -15,13 +15,12 @@ Questa sezione di codice contiene la parte del processo Collector
 #include <time.h>
 #include <unistd.h>
 
-#include "utils.h"
+#include "message.h"
 
-#define MAX_PATHNAME_LEN 1+MAX_NAMELENGTH
 #define UNIX_PATH_MAX 108	//lunghezza massima pathname socket
 #define POLL_SIZE 32		//dimensione degli incrementi lineari di poll
 #define POLL_TIMEOUT 10000	//timeout di poll() in ms
-#define BUFFER_SIZE 512		//dimensione del buffer di ricevimento
+#define BUFFER_SIZE 320		//dimensione del buffer di ricevimento
 
 //mutex della lista dei risultati
 pthread_mutex_t results_mtx=PTHREAD_MUTEX_INITIALIZER;
@@ -35,15 +34,13 @@ typedef struct result {
 //Stampa lista dei risultati
 void printlist(result_t *list) {
 	result_t *aux=list;
-	pthread_mutex_lock(&results_mtx);
 	while(aux!=NULL) {
 		fprintf(stdout,"%ld\t%s\n",aux->total,aux->pathname);
 		aux=aux->next;
 	}
-	pthread_mutex_unlock(&results_mtx);
 }
 //Funzione thread che stampa la lista incompleta di risultati ogni secondo
-static void *part_print(void *arg) {
+static void *partial_print(void *arg) {
 	result_t *list=(result_t*)arg;
 	struct timespec print, print_rem;
 	print.tv_sec=1;
@@ -67,7 +64,6 @@ static void *part_print(void *arg) {
 
 //Inserimento ordinato nella lista dei risultati
 void list_insert(result_t *list, result_t *newnode) {
-	pthread_mutex_lock(&results_mtx);
 	if(list==NULL) {	//inserimento in lista vuota
 		newnode->next=NULL;
 		list=newnode;
@@ -91,7 +87,16 @@ void list_insert(result_t *list, result_t *newnode) {
 			aux->next=newnode;
 		}
 	}
-	pthread_mutex_unlock(&results_mtx);
+}
+
+//deallocazione memoria lista
+void list_free(result_t *head) {
+	result_t *aux=head;
+	while(aux!=NULL) {
+		head=head->next;
+		free(aux);
+		aux=head;
+	}
 }
 
 int main(int argc, char *argv[]) {
@@ -100,8 +105,7 @@ int main(int argc, char *argv[]) {
 		fprintf(stderr,"Collector: passato un numero sbagliato di argomenti\n");
 		exit(EXIT_FAILURE);
 	}
-	
-	fprintf(stderr,"---Collector Parte---\n");
+	DEBUG("---Collector Parte---\n");
 	
 	/*gestione segnali*/
 	sigset_t mask;	//maschera del collector
@@ -126,7 +130,7 @@ int main(int argc, char *argv[]) {
 	
 	/*Creazione del thread che stampa la lista ogni secondo*/
 	pthread_t printer_thread;
-	ec_isnot(pthread_create(&printer_thread,NULL,&part_print,(void*)results),0,"collector, pthread_create printer_thread");
+	ec_isnot(pthread_create(&printer_thread,NULL,&partial_print,(void*)results),0,"collector, pthread_create printer_thread");
 	
 	/*Setup connessione*/
 	int fd_skt, fd_c;		//socket di server e di client
@@ -195,10 +199,10 @@ int main(int argc, char *argv[]) {
 				} while(fd_c>=0);
 			}
 			else {	//ricevuti dati da client
-				fprintf(stderr,"Collector: ricevuto risultato da client %d\n",pfds[i].fd);
+				DEBUG("Collector: ricevuto risultato da client %d\n",pfds[i].fd);
 				int already_read=0;				//mantiene la posizione dell'ultimo byte letto
 				int just_read;					//byte letti con read()
-				int to_read=sizeof(result_t);	//byte restanti da leggere
+				int to_read=sizeof(message_t);	//byte restanti da leggere
 				while(to_read>0) {	//lettura
 					just_read=read(pfds[i].fd,&(buf[already_read]),to_read);
 					if(just_read<0) 
@@ -209,14 +213,21 @@ int main(int argc, char *argv[]) {
 				if(to_read>0)
 					perror("collector, read non completata");
 				
-				result_t *temp;		//copia lato server del risultato
-				ec_is(temp=(result_t*)malloc(sizeof(result_t)),NULL,"collector, allocazione memoria temp");
-				//strncpy(temp->total,buf,sizeof(temp->name));
+				result_t *new_res;		//copia lato server del risultato
+				ec_is(new_res=(result_t*)malloc(sizeof(result_t)),NULL,"collector, allocazione memoria temp");
+				strncpy(new_res->name,buf,sizeof(new_res->name));
+				memcpy(&(new_res->total),buf+sizeof(new_res->name),sizeof(new_res->total));
 				
-				free(temp);
+				//inserimento in lista
+				pthread_mutex_lock(&results_mtx);
+				list_insert(results,new_res);
+				pthread_mutex_unlock(&results_mtx);
 			}
 		}
 	}
+	
+	//stop del thread partial_print TODO
+	printlist(results);
 	
 	return 0;
 }
