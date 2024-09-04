@@ -17,10 +17,8 @@ Questa sezione di codice contiene la parte del processo Collector
 
 #include "message.h"
 
-#define UNIX_PATH_MAX 108	//lunghezza massima pathname socket
 #define POLL_SIZE 32		//dimensione degli incrementi lineari di poll
 #define POLL_TIMEOUT 10000	//timeout di poll() in ms
-#define BUFFER_SIZE 320		//dimensione del buffer di ricevimento
 
 //mutex della lista dei risultati
 pthread_mutex_t results_mtx=PTHREAD_MUTEX_INITIALIZER;
@@ -124,9 +122,11 @@ int main(int argc, char *argv[]) {
 	ec_is(sigaction(SIGPIPE,&collector_sa,NULL),-1,"collector, sigaddset SIGPIPE");
 	
 	/*Setup variabili per il funzionamento del collector*/
-	long clients_num=0;				//numero totale di client connessi
-	result_t *results=NULL;	//lista dei risultati
-	char buf[BUFFER_SIZE];			//buffer per salvare i dati client
+	int running=1;				//server in funzionamento
+	int any_closed=0;			//settato a 1 quando viene chiusa una connessione, necessario per chiudere il server
+	long clients_num=0;			//numero totale di client connessi
+	result_t *results=NULL;		//lista dei risultati
+	char buf[BUFFER_SIZE];		//buffer per salvare i dati client
 	
 	/*Creazione del thread che stampa la lista ogni secondo*/
 	pthread_t printer_thread;
@@ -217,6 +217,14 @@ int main(int argc, char *argv[]) {
 				ec_is(new_res=(result_t*)malloc(sizeof(result_t)),NULL,"collector, allocazione memoria temp");
 				strncpy(new_res->name,buf,sizeof(new_res->name));
 				memcpy(&(new_res->total),buf+sizeof(new_res->name),sizeof(new_res->total));
+				
+				//controlla se ha ricevuto messaggio di disconnessione
+				if(!strncmp(new_res->name,DISCONNECT,strlen(DISCONNECT)) && new_res->total<0) {
+					free(new_res);
+					pfds[i].fd=-1;
+					nfds--;
+					any_closed=1;
+				}
 				
 				//inserimento in lista
 				pthread_mutex_lock(&results_mtx);

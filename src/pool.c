@@ -19,12 +19,9 @@ usa per inserire task in coda.
 #include <sys/un.h>
 #include <unistd.h>
 
+#include "message.h"
 #include "pool.h"
 #include "workfun.h"
-
-#define MAX_PATHNAME_LEN 1+MAX_NAMELENGTH	//lunghezza massima pathname file di task
-#define UNIX_PATH_MAX 108	//lunghezza massima pathname socket
-#define BUFFER_SIZE 320		//dimensione del buffer di invio dati
 
 //linked list di thread worker
 struct workerlist {
@@ -71,14 +68,15 @@ static void *thread_func(void *arg) {
 	
 	while(pool->running) {
 		DEBUG("worker %d: in task loop\n",id);
-		if(!started) {
+		if(!started) {	//avvisa add_worker() che il thread e' nel loop
 			pthread_mutex_lock(&pool->worker_mtx);
 			pool->started_threads++;	//il thread viene contato come partito
 			started=1;
-			pthread_cond_signal(&pool->worker_cond);	//avvisa add_worker()
+			pthread_cond_signal(&pool->worker_cond);
 			pthread_mutex_unlock(&pool->worker_mtx);
 			DEBUG("Worker %d: inizializzato, pronto a svolgere task\n",id);
 		}
+		
 		pthread_mutex_lock(&pool->worker_mtx);
 		if(pool->remove_threads>0) {	//bisogna rimuovere un thread, quello corrente esce dal loop
 			pool->remove_threads--;
@@ -87,20 +85,24 @@ static void *thread_func(void *arg) {
 			break;
 		}
 		pthread_mutex_unlock(&pool->worker_mtx);
+		
 		memset(buf,0,BUFFER_SIZE);	//ripulisce il buffer
 		pthread_mutex_lock(&pool->task_mtx);
 		while(pool->tasks_head==NULL) {	//nessun task in coda
 			DEBUG("worker %d: nessun task in coda\n",id);
 			pthread_cond_wait(&pool->empty_queue_cond,&pool->task_mtx);	//si mette in attesa di task
 		}
-		//controlla se il task in coda sia quello conclusivo
-		if(pool->tasks_head->endtask) {
+		
+		if(pool->tasks_head->endtask) {	//controlla se il task in coda sia quello conclusivo
 			DEBUG("Worker %d: trovato task finale\n",id);
 			pthread_mutex_unlock(&pool->task_mtx);
 			break;
 		}
+		
 		//thread prende ed esegue il task
 		strncpy(buf,pool->tasks_head->task,MAX_PATHNAME_LEN);	//copia il filename fino a un max di 256 byte
+		
+		/*rimozione task dalla coda*/
 		aux=pool->tasks_head;
 		pool->tasks_head=pool->tasks_head->next;
 		pool->cur_queue_size--;
@@ -111,6 +113,7 @@ static void *thread_func(void *arg) {
 		free(aux);
 		pthread_cond_signal(&pool->full_queue_cond); //segnala la presenza di spazio libero nella coda
 		pthread_mutex_unlock(&pool->task_mtx);
+		
 		result=workfun(buf);	//invoca workfun(), chiamato sul buffer che contiene solo il nome del task
 		if(result<0) {	//errore nell'inovcazione di workfun
 			DEBUG("Worker %d: errore di workfun %ld\n",id,result);
@@ -141,7 +144,29 @@ static void *thread_func(void *arg) {
 			perror("worker, write terminata male");
 	}
 	
-	close(fd_skt);	//disconnessione dal collector
+	/*disconnessione dal collector*/
+	memset(buf,0,BUFFER_SIZE);	//ripulisce il buffer per inviare il messaggio di chiusura connessione
+	strncpy(buf,DISCONNECT,6);
+	memcpy(buf+MAX_PATHNAME_LEN,-1,sizeof(long));
+	int already_written=0;
+	int just_written;
+	int to_write=sizeof(message_t);
+	while(to_write>0) {
+		just_written=write(fd_skt,buf+already_written,to_write);
+		if(just_written<0) {	//errore
+			if(errno==EPIPE) {	//connessione chiusa, SIGPIPE per fortuna viene ignorato
+				DEBUG("Worker %d, connessione terminata\n",id);
+			else
+				perror("worker, errore di write");
+			}
+			break;
+		}
+		already_written+=just_written;
+		to_write-=just_written;
+	}
+	if(to_write!=0 && errno!=EPIPE)
+		perror("worker, write terminata male");
+	close(fd_skt);
 	
 	DEBUG("worker %d: uscita\n",id);
 	pthread_exit((void*)NULL);
