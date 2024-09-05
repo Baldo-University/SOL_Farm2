@@ -17,17 +17,24 @@ Questa sezione di codice contiene la parte del processo Collector
 
 #include "message.h"
 
-#define POLL_SIZE 32		//dimensione degli incrementi lineari di poll
+#define POLL_SIZE 16		//dimensione degli incrementi lineari di poll
 #define POLL_TIMEOUT 10000	//timeout di poll() in ms
 
 //mutex della lista dei risultati
 pthread_mutex_t results_mtx=PTHREAD_MUTEX_INITIALIZER;
 
+//lista di risultati
 typedef struct result {
 	long total;
 	char pathname[MAX_PATHNAME_LEN];
 	struct result *next;
 } result_t;
+
+//argomenti da passare al thread che stampa i risultati parziali ogni secondo
+typedef struct thread_args {
+	result_t *list;
+	int running;
+} thread_args_t;
 
 //Stampa lista dei risultati
 void printlist(result_t *list) {
@@ -39,24 +46,35 @@ void printlist(result_t *list) {
 }
 //Funzione thread che stampa la lista incompleta di risultati ogni secondo
 static void *partial_print(void *arg) {
-	result_t *list=(result_t*)arg;
-	struct timespec print, print_rem;
-	print.tv_sec=1;
-	print.tv_nsec=0;
-	int sleep_result=0;
-	/* TODO trova modo per chiudere il thread
+	thread_args_t *args=(thread_args_t*)arg;
+	args->list=arg->list;
+	args->running=arg->running;
+	struct timespec print_time, print_rem;
+	print_time.tv_sec=1;
+	print_time.tv_nsec=0;
+	int sleep_result;
 	for(;;) {
-		if(sleep_result==0) {
-			sleep_result=nanosleep(&print,&print_rem);
-			if(sleep_result!=0 && errno!=EINTR)	//errore diverso da interruzione
+		pthread_mutex_lock(&results_mtx);
+		if(!args->running)
+			pthread_mutex_unlock(&results_mtx);
+			break;
+		}
+		pthread_mutex_unlock(&results_mtx);
+		
+		sleep_result=nanosleep(&print_time,&print_rem);
+		while(sleep_result!=0) {
+			if(errno!=EINTR)	//se errore non dovuto ad interruzione esci
 				break;
-		}
-		else {
 			sleep_result=nanosleep(&print_rem,&print_rem);
-			printlist();
 		}
+		pthread_mutex_lock(&results_mtx);
+		if(!args->running)
+			pthread_mutex_unlock(&results_mtx);
+			break;
+		}
+		printlist(args->list);
+		pthread_mutex_unlock(&results_mtx);
 	}
-	*/
 	return NULL;
 }
 
@@ -127,10 +145,14 @@ int main(int argc, char *argv[]) {
 	long clients_num=0;			//numero totale di client connessi
 	result_t *results=NULL;		//lista dei risultati
 	char buf[BUFFER_SIZE];		//buffer per salvare i dati client
+	int i,j;					//indici scorrimento array
 	
 	/*Creazione del thread che stampa la lista ogni secondo*/
 	pthread_t printer_thread;
-	ec_isnot(pthread_create(&printer_thread,NULL,&partial_print,(void*)results),0,"collector, pthread_create printer_thread");
+	thread_args_t *args;
+	args->list=results;
+	args->running=running;
+	ec_isnot(pthread_create(&printer_thread,NULL,&partial_print,(void*)args),0,"collector, pthread_create printer_thread");
 	
 	/*Setup connessione*/
 	int fd_skt, fd_c;		//socket di server e di client
@@ -146,26 +168,32 @@ int main(int argc, char *argv[]) {
 	int poll_size=POLL_SIZE;	//dimensione iniziale del poll array
 	int nfds=1;					//numero di fd su coi fare poll() al momento del lancio
 	int poll_ret=0;				//restituito da poll(), numero di elementi di pfds con un evento o un errore
+	int cur_nfds=nfds;			//valore per l'iterazione su poll
 	ec_is(pfds=calloc(poll_size,sizeof(struct pollfd)),NULL,"collector, calloc pollfd");
 	pfds[0].fd=fd_skt;		//poll prende come primo elemento il socket di ascolto di nuove connessioni
 	pfds[0].events=POLLIN;	//lettura dati
 	fprintf(stderr,"Collector creato\n");
 	
 	/*loop di poll*/
-	for(;;) {
+	pthread_mutex_lock(&results_mtx);
+	while(running) {
+		pthread_mutex_unlock(&results_mtx);
 		ec_is(poll_ret=poll(pfds,nfds,POLL_TIMEOUT),-1,"collector, poll");
-		if(poll_ret==0) {
+		if(!poll_ret) {
 			fprintf(stderr,"Raggiunto timeout\n");
 			break;
 		}
 		
-		int i;
-		for(i=0;i<nfds;i++) {
+		/*iterazione sulle connessioni stabilite*/
+		cur_nfds=nfds;
+		for(i=0;i<cur_nfds;i++) {
 			if(pfds[i].revents==0)	//nessun evento/errore
 				continue;
 			if(pfds[i].revents & POLLIN)	//errore
 				fprintf(stderr,"aiuto\n");
-			if(pfds[i].fd==fd_skt) {	//ricevuta richiesta di nuova connessione client
+			
+			//ricevuta richiesta di nuova connessione client
+			if(pfds[i].fd==fd_skt) {
 				fprintf(stderr,"Collector: richiesta nuova connessione\n");
 				do {
 					fd_c=accept(fd_skt,NULL,0);
@@ -178,7 +206,8 @@ int main(int argc, char *argv[]) {
 					else {
 						fprintf(stderr,"Collector: accettato client con fd %d\n",fd_c);
 						int reallocable=1;		//per indicare se abbiamo spazio in memoria per allargare poll
-						if(nfds+1==poll_size) {	//controlla che ci sia spazio nel poll_size	
+						//controlla che ci sia spazio nel poll_size	
+						if(nfds+1==poll_size) {	//spazio esaurito
 							fprintf(stderr,"Collector: poll piena\n");
 							pfds=(struct pollfd*)realloc(pfds,(poll_size+(int)POLL_SIZE)*sizeof(struct pollfd));
 							if(errno==ENOMEM) {	//errore di memoria terminata
@@ -190,15 +219,17 @@ int main(int argc, char *argv[]) {
 								poll_size+=POLL_SIZE;
 							}
 						}
-						if(reallocable) {
+						if(reallocable) {	//spazio di poll disponibile
 							pfds[nfds].fd=fd_c;	//si salva il socket del client in una posizione vuota di poll
 							pfds[nfds].events=POLLIN;	//aperto alla lettura di dati
-							nfds++;
+							nfds++;	//aumenta di uno il numero di connessioni e punta all;indice successivo di poll
 						}
 					}
 				} while(fd_c>=0);
 			}
-			else {	//ricevuti dati da client
+			
+			//ricevuti dati da client
+			else {
 				DEBUG("Collector: ricevuto risultato da client %d\n",pfds[i].fd);
 				int already_read=0;				//mantiene la posizione dell'ultimo byte letto
 				int just_read;					//byte letti con read()
@@ -210,7 +241,7 @@ int main(int argc, char *argv[]) {
 					already_read+=just_read;
 					to_read-=just_read;
 				}
-				if(to_read>0)
+				if(to_read!=0)
 					perror("collector, read non completata");
 				
 				result_t *new_res;		//copia lato server del risultato
@@ -220,22 +251,45 @@ int main(int argc, char *argv[]) {
 				
 				//controlla se ha ricevuto messaggio di disconnessione
 				if(!strncmp(new_res->name,DISCONNECT,strlen(DISCONNECT)) && new_res->total<0) {
-					free(new_res);
-					pfds[i].fd=-1;
-					nfds--;
-					any_closed=1;
+					free(new_res);	//non si inserisce nella lista dei risultati
+					pfds[i].fd=-1;	//indice poll da chiudere in seguito
+					//nfds--;
+					any_closed=1;	//da questo punto in poi se abbiamo solo la socket fd_skt il server chiude
 				}
-				
-				//inserimento in lista
+				else {	//inserimento in lista
+					pthread_mutex_lock(&results_mtx);
+					list_insert(results,new_res);
+					pthread_mutex_unlock(&results_mtx);
+				}
+			}
+		}
+		
+		/*pulizia poll*/
+		for(i=0;i<nfds;i++) {
+			if(pfds[i].fd==-1) {	//connessione chiusa
+				for(j=i;j<nfds;j++) {	//shift di posizioni dei restanti indici
+					pfds[j].fd=pfds[j+1].fd;
+					pfds[j].events=pfds[j+1].events;
+				}
+				i--;
+				nfds--;
+			}
+		}
+		
+		/*controllo chiusura server*/
+		if(any_closed) {	//almeno un client si e' disconnesso
+			if(nfds==1) {	//solo fd_skt rimane aperta, tutti i client si sono disconnessi
 				pthread_mutex_lock(&results_mtx);
-				list_insert(results,new_res);
+				running=0;
 				pthread_mutex_unlock(&results_mtx);
 			}
 		}
 	}
 	
+	free(pfds);
 	//stop del thread partial_print TODO
 	printlist(results);
+	list_free(results);
 	
 	return 0;
 }
