@@ -1,4 +1,3 @@
-comportamento del thread che stampa i risultati ogni secondo. Come chiuderlo? Cambiare gli argomenti passati e lasciare 
-solo la lista dei risultati?
+compilazione e test con DEBUG
 
 nota: se gli errori si rompono prova a mettere SIG_BLOCK invece di SIG_SETMASK nella maschera del master
