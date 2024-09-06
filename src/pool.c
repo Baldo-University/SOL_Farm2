@@ -67,7 +67,7 @@ static void *thread_func(void *arg) {
 	}
 	
 	while(pool->running) {
-		DEBUG("worker %d: in task loop\n",id);
+		DEBUG("Worker %d: in task loop\n",id);
 		if(!started) {	//avvisa add_worker() che il thread e' nel loop
 			pthread_mutex_lock(&pool->worker_mtx);
 			pool->started_threads++;	//il thread viene contato come partito
@@ -82,6 +82,7 @@ static void *thread_func(void *arg) {
 			pool->remove_threads--;
 			pool->num_threads--;
 			pthread_mutex_unlock(&pool->worker_mtx);
+			DEBUG("Worker %d: rimosso dal pool attivo\n",id);
 			break;
 		}
 		pthread_mutex_unlock(&pool->worker_mtx);
@@ -246,7 +247,7 @@ void add_worker(threadpool_t *pool) {
 //aumenta di uno il numero di thread da rimuovere dal pool in seguito a SIGUSR2
 void remove_worker(threadpool_t *pool) {
 	pthread_mutex_lock(&pool->worker_mtx);
-	if(pool->num_threads>1)	//si diminuiscono i worker se ce n'e' piu' di uno nel pool
+	if(pool->num_threads>1)		//si diminuiscono i worker se ce n'e' piu' di uno nel pool
 		pool->remove_threads++;
 	pthread_mutex_unlock(&pool->worker_mtx);
 }

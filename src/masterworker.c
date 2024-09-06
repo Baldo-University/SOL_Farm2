@@ -268,37 +268,25 @@ void masterworker(int argc, char *argv[], char *socket) {
 		pthread_mutex_unlock(&thread_num_mtx);
 		
 		struct stat info;
-		DEBUG("Filefinder: argv[%d] pre checkstat\n",i);
 		int check_stat=stat(argv[i],&info);
 		if(check_stat==-1) {
 			perror("Masterworker, stat di file regolare");
 			continue;
 		}
-		DEBUG("Filefinder: argv[%d] pre typecheck\n",i);
 		if(!S_ISREG(info.st_mode))
 			DEBUG("Passato file %s non regolare da linea di comando, scartato.\n",argv[i]);
-		else {
-			DEBUG("Filefinder: argv[%d] inserimento\n",i);
-			//ritardo di inserimento (versione basic)
-			if(sleep_result==0) {	//attesa completa
-				sleep_result=nanosleep(&delay,&delay_rem);
-				if(sleep_result==-1) {	//errore
-					if(errno==EINTR)	//verifica se nanosleep interrotto da segnale
-						errno=0;
-				}
+		else {	//inserimento con eventuale ritardo
+			sleep_result=nanosleep(&print_time,&print_rem);
+			while(sleep_result!=0) {
+				if(errno!=EINTR)
+					continue;
+				errno=0;
+				sleep_result=nanosleep(&print_rem,&print_rem);
 			}
-			else {	//attesa parziale in seguito ad un'interruzione
-				sleep_result=nanosleep(&delay_rem,&delay_rem);
-				if(sleep_result==-1) {
-					if(errno==EINTR)	//verifica se nanosleep interrotto da segnale
-						errno=0;
-				}
-			}
-			if(sleep_result!=0)		//nanosleep restituisce errore e non interrotto da segnale
-				continue;
+			
 			int res=enqueue_task(pool,argv[i]);
 			if(res)	//invio file
-				DEBUG("Filefinder: argv[%d], enqueue faillita con errore %d",i,res);
+				DEBUG("Filefinder: argv[%d], enqueue fallita con errore %d",i,res);
 			DEBUG("Filefinder: inserito file %s in coda\n",argv[i]);
 		}
 	}
@@ -372,28 +360,19 @@ void masterworker(int argc, char *argv[], char *socket) {
 				
 			else if(file->d_type==DT_DIR) {	//trovata directory
 				DEBUG("trovata directory %s\n",file->d_name);
-				dirs_add(&directories,file->d_name,directories->name);	//aggiunta in coda, scorrimento breadth-first
+				dirs_add(&directories,file->d_name,directories->name);	//aggiunta in coda
 			}
 			
 			else if(file->d_type==DT_REG) {	//trovato file normale
-				//ritardo di inserimento (da rifare TODO)
-				if(sleep_result==0) {	//attesa completa
-					sleep_result=nanosleep(&delay,&delay_rem);
-					if(sleep_result==-1) {	//errore
-						if(errno==EINTR)	//verifica se nanosleep interrotto da segnale
-							errno=0;
-					}
+				//inserimento con eventuale ritardo
+				sleep_result=nanosleep(&print_time,&print_rem);
+				while(sleep_result!=0) {
+					if(errno!=EINTR)
+						continue;
+					errno=0;
+					sleep_result=nanosleep(&print_rem,&print_rem);
 				}
-				else {	//attesa parziale in seguito ad un'interruzione
-					sleep_result=nanosleep(&delay_rem,&delay_rem);
-					if(sleep_result==-1) {
-						if(errno==EINTR)	//verifica se nanosleep interrotto da segnale
-							errno=0;
-					}
-				}
-				if(sleep_result!=0)		//nanosleep restituisce errore e non interrotto da segnale
-					continue;
-				//metti il nome completo nella stringa di supporto prima di produrre il file in coda
+				//inserisci il nome completo nella stringa di supporto prima di produrre il file in coda
 				memset(fullpathname,0,MAX_PATHNAME_LEN);
 				snprintf(fullpathname,MAX_PATHNAME_LEN,"%s/%s",directories->name,file->d_name);
 				enqueue_task(pool,fullpathname);	//invio file

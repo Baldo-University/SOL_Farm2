@@ -20,8 +20,8 @@ Questa sezione di codice contiene la parte del processo Collector
 #define POLL_SIZE 16		//dimensione degli incrementi lineari di poll
 #define POLL_TIMEOUT 10000	//timeout di poll() in ms
 
-//mutex della lista dei risultati
-pthread_mutex_t results_mtx=PTHREAD_MUTEX_INITIALIZER;
+int running;		//collector in funzionamento o meno
+pthread_mutex_t results_mtx=PTHREAD_MUTEX_INITIALIZER;	//mutex per la lista dei risultati e per running
 
 //lista di risultati
 typedef struct result {
@@ -29,12 +29,6 @@ typedef struct result {
 	char pathname[MAX_PATHNAME_LEN];
 	struct result *next;
 } result_t;
-
-//argomenti da passare al thread che stampa i risultati parziali ogni secondo
-typedef struct thread_args {
-	result_t *list;
-	int running;
-} thread_args_t;
 
 //Stampa lista dei risultati
 void printlist(result_t *list) {
@@ -46,16 +40,14 @@ void printlist(result_t *list) {
 }
 //Funzione thread che stampa la lista incompleta di risultati ogni secondo
 static void *partial_print(void *arg) {
-	thread_args_t *args=(thread_args_t*)arg;
-	args->list=arg->list;
-	args->running=arg->running;
+	result_t *results=(result_t*)arg;
 	struct timespec print_time, print_rem;
 	print_time.tv_sec=1;
 	print_time.tv_nsec=0;
-	int sleep_result;
+	int sleep_result=0;
 	for(;;) {
 		pthread_mutex_lock(&results_mtx);
-		if(!args->running)
+		if(!running) {
 			pthread_mutex_unlock(&results_mtx);
 			break;
 		}
@@ -64,18 +56,20 @@ static void *partial_print(void *arg) {
 		sleep_result=nanosleep(&print_time,&print_rem);
 		while(sleep_result!=0) {
 			if(errno!=EINTR)	//se errore non dovuto ad interruzione esci
-				break;
+				pthread_exit((void*)errno);
+			errno=0;
 			sleep_result=nanosleep(&print_rem,&print_rem);
 		}
+		
 		pthread_mutex_lock(&results_mtx);
-		if(!args->running)
+		if(!running) {
 			pthread_mutex_unlock(&results_mtx);
 			break;
 		}
-		printlist(args->list);
+		printlist(results);
 		pthread_mutex_unlock(&results_mtx);
 	}
-	return NULL;
+	pthread_exit((void*)NULL);
 }
 
 //Inserimento ordinato nella lista dei risultati
@@ -140,7 +134,7 @@ int main(int argc, char *argv[]) {
 	ec_is(sigaction(SIGPIPE,&collector_sa,NULL),-1,"collector, sigaddset SIGPIPE");
 	
 	/*Setup variabili per il funzionamento del collector*/
-	int running=1;				//server in funzionamento
+	running=1;					//server in funzionamento
 	int any_closed=0;			//settato a 1 quando viene chiusa una connessione, necessario per chiudere il server
 	long clients_num=0;			//numero totale di client connessi
 	result_t *results=NULL;		//lista dei risultati
@@ -149,10 +143,7 @@ int main(int argc, char *argv[]) {
 	
 	/*Creazione del thread che stampa la lista ogni secondo*/
 	pthread_t printer_thread;
-	thread_args_t *args;
-	args->list=results;
-	args->running=running;
-	ec_isnot(pthread_create(&printer_thread,NULL,&partial_print,(void*)args),0,"collector, pthread_create printer_thread");
+	ec_isnot(pthread_create(&printer_thread,NULL,&partial_print,(void*)results),0,"collector, pthread_create printer_thread");
 	
 	/*Setup connessione*/
 	int fd_skt, fd_c;		//socket di server e di client
@@ -287,7 +278,9 @@ int main(int argc, char *argv[]) {
 	}
 	
 	free(pfds);
-	//stop del thread partial_print TODO
+	int status;
+	pthread_join(printer_thread,(void*)&status);
+	DEBUG("Collector: thread pritner terminato con status %d\n",status);
 	printlist(results);
 	list_free(results);
 	
