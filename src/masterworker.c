@@ -276,12 +276,12 @@ void masterworker(int argc, char *argv[], char *socket) {
 		if(!S_ISREG(info.st_mode))
 			DEBUG("Passato file %s non regolare da linea di comando, scartato.\n",argv[i]);
 		else {	//inserimento con eventuale ritardo
-			sleep_result=nanosleep(&print_time,&print_rem);
+			sleep_result=nanosleep(&delay,&delay_rem);
 			while(sleep_result!=0) {
 				if(errno!=EINTR)
 					continue;
 				errno=0;
-				sleep_result=nanosleep(&print_rem,&print_rem);
+				sleep_result=nanosleep(&delay_rem,&delay_rem);
 			}
 			
 			int res=enqueue_task(pool,argv[i]);
@@ -365,12 +365,12 @@ void masterworker(int argc, char *argv[], char *socket) {
 			
 			else if(file->d_type==DT_REG) {	//trovato file normale
 				//inserimento con eventuale ritardo
-				sleep_result=nanosleep(&print_time,&print_rem);
+				sleep_result=nanosleep(&delay,&delay_rem);
 				while(sleep_result!=0) {
 					if(errno!=EINTR)
 						continue;
 					errno=0;
-					sleep_result=nanosleep(&print_rem,&print_rem);
+					sleep_result=nanosleep(&delay_rem,&delay_rem);
 				}
 				//inserisci il nome completo nella stringa di supporto prima di produrre il file in coda
 				memset(fullpathname,0,MAX_PATHNAME_LEN);

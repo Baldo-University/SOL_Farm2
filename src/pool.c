@@ -59,8 +59,8 @@ static void *thread_func(void *arg) {
 	}
 	while(connect(fd_skt,(struct sockaddr*)&sa,sizeof(sa))==-1) {	//loop connessione
 		if(errno==ENOENT)	//non esiste nessun socket in ascolto
-			sleep(1);
-		else {
+			sleep(1);		//attende un secondo
+		else {				//problema
 			perror("worker, connect");
 			pthread_exit((void*)NULL);
 		}

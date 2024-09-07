@@ -21,7 +21,7 @@ Questa sezione di codice contiene la parte del processo Collector
 #define POLL_TIMEOUT 10000	//timeout di poll() in ms
 
 int running;		//collector in funzionamento o meno
-pthread_mutex_t results_mtx=PTHREAD_MUTEX_INITIALIZER;	//mutex per la lista dei risultati e per running
+pthread_mutex_t mtx=PTHREAD_MUTEX_INITIALIZER;	//mutex per la lista dei risultati e per running
 
 //lista di risultati
 typedef struct result {
@@ -40,35 +40,41 @@ void printlist(result_t *list) {
 }
 //Funzione thread che stampa la lista incompleta di risultati ogni secondo
 static void *partial_print(void *arg) {
+	fprintf(stderr,"Printer: parte\n");
 	result_t *results=(result_t*)arg;
 	struct timespec print_time, print_rem;
 	print_time.tv_sec=1;
 	print_time.tv_nsec=0;
 	int sleep_result=0;
 	for(;;) {
-		pthread_mutex_lock(&results_mtx);
+		pthread_mutex_lock(&mtx);
 		if(!running) {
-			pthread_mutex_unlock(&results_mtx);
+			pthread_mutex_unlock(&mtx);
 			break;
 		}
-		pthread_mutex_unlock(&results_mtx);
+		pthread_mutex_unlock(&mtx);
 		
+		fprintf(stderr,"Printer: attende un secondo...\n");
 		sleep_result=nanosleep(&print_time,&print_rem);
 		while(sleep_result!=0) {
-			if(errno!=EINTR)	//se errore non dovuto ad interruzione esci
-				pthread_exit((void*)errno);
+			if(errno!=EINTR) {	//se errore non dovuto ad interruzione esci
+				fprintf(stderr,"Printer: terminato ne' da interruzione ne' da fine collector\n");
+				pthread_exit((void*)NULL);
+			}
 			errno=0;
 			sleep_result=nanosleep(&print_rem,&print_rem);
 		}
 		
-		pthread_mutex_lock(&results_mtx);
+		pthread_mutex_lock(&mtx);
 		if(!running) {
-			pthread_mutex_unlock(&results_mtx);
+			pthread_mutex_unlock(&mtx);
 			break;
 		}
+		fprintf(stderr,"Printer: stampa i risultati\n");
 		printlist(results);
-		pthread_mutex_unlock(&results_mtx);
+		pthread_mutex_unlock(&mtx);
 	}
+	fprintf(stderr,"Printer: termina\n");
 	pthread_exit((void*)NULL);
 }
 
@@ -77,16 +83,19 @@ void list_insert(result_t *list, result_t *newnode) {
 	if(list==NULL) {	//inserimento in lista vuota
 		newnode->next=NULL;
 		list=newnode;
+		fprintf(stderr,"Collector: inserimento risultato in lista vuota\n");
 	}
 	else {
 		if(list->next==NULL) {	//coda ad un solo elemento
 			if(list->total>newnode->total) {	//nuovo elemento strettamente minore
 				newnode->next=list;
 				list=newnode;
+				fprintf(stderr,"Collector: inserimento risultato in testa di lista con un solo elemento\n");
 			}
 			else {	//nuovo elemento uguale o maggiore
 				newnode->next=NULL;
 				list->next=newnode;
+				fprintf(stderr,"Collector: inserimento risultato in coda di lista con un solo elemento\n");
 			}
 		}
 		else {	//coda con almeno due elementi
@@ -95,6 +104,7 @@ void list_insert(result_t *list, result_t *newnode) {
 				aux=aux->next;
 			newnode->next=aux->next;
 			aux->next=newnode;
+			fprintf(stderr,"Collector: inserimento risultato ordinato in lista con almeno due elementi\n");
 		}
 	}
 }
@@ -115,7 +125,7 @@ int main(int argc, char *argv[]) {
 		fprintf(stderr,"Collector: passato un numero sbagliato di argomenti\n");
 		exit(EXIT_FAILURE);
 	}
-	DEBUG("---Collector Parte---\n");
+	fprintf(stderr,"---Collector Parte---\n");
 	
 	/*gestione segnali*/
 	sigset_t mask;	//maschera del collector
@@ -133,10 +143,11 @@ int main(int argc, char *argv[]) {
 	ec_is(sigaction(SIGUSR2,&collector_sa,NULL),-1,"collector, sigaddset SIGUSR2");
 	ec_is(sigaction(SIGPIPE,&collector_sa,NULL),-1,"collector, sigaddset SIGPIPE");
 	
+	fprintf(stderr,"Collector: settati segnali\n");
+	
 	/*Setup variabili per il funzionamento del collector*/
 	running=1;					//server in funzionamento
 	int any_closed=0;			//settato a 1 quando viene chiusa una connessione, necessario per chiudere il server
-	long clients_num=0;			//numero totale di client connessi
 	result_t *results=NULL;		//lista dei risultati
 	char buf[BUFFER_SIZE];		//buffer per salvare i dati client
 	int i,j;					//indici scorrimento array
@@ -144,6 +155,7 @@ int main(int argc, char *argv[]) {
 	/*Creazione del thread che stampa la lista ogni secondo*/
 	pthread_t printer_thread;
 	ec_isnot(pthread_create(&printer_thread,NULL,&partial_print,(void*)results),0,"collector, pthread_create printer_thread");
+	fprintf(stderr,"Collector: thread printer lanciato\n");
 	
 	/*Setup connessione*/
 	int fd_skt, fd_c;		//socket di server e di client
@@ -153,6 +165,7 @@ int main(int argc, char *argv[]) {
 	ec_is(fd_skt=socket(AF_UNIX,SOCK_STREAM,0),-1,"collector, socket");
 	ec_is(bind(fd_skt,(struct sockaddr*)&sa,sizeof(sa)),-1,"collector, bind");
 	ec_is(listen(fd_skt,SOMAXCONN),-1,"collector, listen");
+	fprintf(stderr,"Collector: aperta socket di listen\n");
 	
 	/*Setup poll*/
 	struct pollfd *pfds;
@@ -163,15 +176,15 @@ int main(int argc, char *argv[]) {
 	ec_is(pfds=calloc(poll_size,sizeof(struct pollfd)),NULL,"collector, calloc pollfd");
 	pfds[0].fd=fd_skt;		//poll prende come primo elemento il socket di ascolto di nuove connessioni
 	pfds[0].events=POLLIN;	//lettura dati
-	fprintf(stderr,"Collector creato\n");
+	fprintf(stderr,"Collector: inizializzato\n");
 	
 	/*loop di poll*/
-	pthread_mutex_lock(&results_mtx);
+	pthread_mutex_lock(&mtx);
 	while(running) {
-		pthread_mutex_unlock(&results_mtx);
+		pthread_mutex_unlock(&mtx);
 		ec_is(poll_ret=poll(pfds,nfds,POLL_TIMEOUT),-1,"collector, poll");
 		if(!poll_ret) {
-			fprintf(stderr,"Raggiunto timeout\n");
+			fprintf(stderr,"Collector: raggiunto timeout poll\n");
 			break;
 		}
 		
@@ -221,7 +234,7 @@ int main(int argc, char *argv[]) {
 			
 			//ricevuti dati da client
 			else {
-				DEBUG("Collector: ricevuto risultato da client %d\n",pfds[i].fd);
+				fprintf(stderr,"Collector: ricevuto risultato da client %d\n",pfds[i].fd);
 				int already_read=0;				//mantiene la posizione dell'ultimo byte letto
 				int just_read;					//byte letti con read()
 				int to_read=sizeof(message_t);	//byte restanti da leggere
@@ -237,20 +250,21 @@ int main(int argc, char *argv[]) {
 				
 				result_t *new_res;		//copia lato server del risultato
 				ec_is(new_res=(result_t*)malloc(sizeof(result_t)),NULL,"collector, allocazione memoria temp");
-				strncpy(new_res->name,buf,sizeof(new_res->name));
-				memcpy(&(new_res->total),buf+sizeof(new_res->name),sizeof(new_res->total));
+				strncpy(new_res->pathname,buf,sizeof(new_res->pathname));
+				memcpy(&(new_res->total),buf+sizeof(new_res->pathname),sizeof(new_res->total));
 				
 				//controlla se ha ricevuto messaggio di disconnessione
-				if(!strncmp(new_res->name,DISCONNECT,strlen(DISCONNECT)) && new_res->total<0) {
+				if(!strncmp(new_res->pathname,DISCONNECT,strlen(DISCONNECT)) && new_res->total<0) {
 					free(new_res);	//non si inserisce nella lista dei risultati
-					pfds[i].fd=-1;	//indice poll da chiudere in seguito
+					close(pfds[i].fd);
+					pfds[i].fd=-1;	//indice poll da ripulire in seguito
 					//nfds--;
 					any_closed=1;	//da questo punto in poi se abbiamo solo la socket fd_skt il server chiude
 				}
 				else {	//inserimento in lista
-					pthread_mutex_lock(&results_mtx);
+					pthread_mutex_lock(&mtx);
 					list_insert(results,new_res);
-					pthread_mutex_unlock(&results_mtx);
+					pthread_mutex_unlock(&mtx);
 				}
 			}
 		}
@@ -270,19 +284,20 @@ int main(int argc, char *argv[]) {
 		/*controllo chiusura server*/
 		if(any_closed) {	//almeno un client si e' disconnesso
 			if(nfds==1) {	//solo fd_skt rimane aperta, tutti i client si sono disconnessi
-				pthread_mutex_lock(&results_mtx);
+				pthread_mutex_lock(&mtx);
 				running=0;
-				pthread_mutex_unlock(&results_mtx);
+				pthread_mutex_unlock(&mtx);
 			}
 		}
 	}
 	
-	free(pfds);
-	int status;
-	pthread_join(printer_thread,(void*)&status);
-	DEBUG("Collector: thread pritner terminato con status %d\n",status);
-	printlist(results);
-	list_free(results);
-	
+	free(pfds);		//dealloca la memoria di poll
+	pthread_join(printer_thread,(void*)NULL);	//aspetta che il printer thread termini da solo
+	printlist(results);		//stampa la lista finale dei risultati
+	list_free(results);		//dealloca la memoria dei risultati
+	pthread_mutex_destroy(&mtx);	//dealloca mutex
+	close(fd_skt);					//chiude la connessione
+	fprintf(stderr,"Collector: termina\n");
+	//arrivato qui il processo termina con successo
 	return 0;
 }
