@@ -1,3 +1,4 @@
 debugging connessione (semplificare parti?)
+address already in use...
 
 nota: se gli errori si rompono prova a mettere SIG_BLOCK invece di SIG_SETMASK nella maschera del master
