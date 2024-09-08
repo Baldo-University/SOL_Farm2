@@ -123,6 +123,7 @@ static void *thread_func(void *arg) {
 		DEBUG("Worker %d: il risultato di %s e' %ld\n",id,buf,result);
 		
 		/*invio al collector*/
+		/*
 		//salva il risultato di workfun() nel buffer per completare il messaggio
 		memcpy(buf+MAX_PATHNAME_LEN,&(result),sizeof(long));
 		int already_written=0;			//mantiene la posizione dell'ultimo byte scritto
@@ -143,23 +144,24 @@ static void *thread_func(void *arg) {
 		}
 		if(to_write!=0 && errno!=EPIPE)
 			perror("worker, write terminata male");
+		*/
 	}
 	
 	/*disconnessione dal collector*/
 	memset(buf,0,BUFFER_SIZE);	//ripulisce il buffer per inviare il messaggio di chiusura connessione
-	strncpy(buf,DISCONNECT,6);
-	memcpy(buf+MAX_PATHNAME_LEN,-1,sizeof(long));
+	result=-1;
+	strncpy(buf,DISCONNECT,strnlen(DISCONNECT,MAX_PATHNAME_LEN));
+	memcpy(buf+MAX_PATHNAME_LEN,&(result),sizeof(long));
 	int already_written=0;
 	int just_written;
 	int to_write=sizeof(message_t);
 	while(to_write>0) {
 		just_written=write(fd_skt,buf+already_written,to_write);
 		if(just_written<0) {	//errore
-			if(errno==EPIPE) {	//connessione chiusa, SIGPIPE per fortuna viene ignorato
+			if(errno==EPIPE)	//connessione chiusa, SIGPIPE per fortuna viene ignorato
 				DEBUG("Worker %d, connessione terminata\n",id);
 			else
 				perror("worker, errore di write");
-			}
 			break;
 		}
 		already_written+=just_written;

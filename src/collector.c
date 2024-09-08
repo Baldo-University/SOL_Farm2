@@ -38,6 +38,7 @@ void printlist(result_t *list) {
 		aux=aux->next;
 	}
 }
+/*
 //Funzione thread che stampa la lista incompleta di risultati ogni secondo
 static void *partial_print(void *arg) {
 	fprintf(stderr,"Printer: parte\n");
@@ -77,7 +78,7 @@ static void *partial_print(void *arg) {
 	fprintf(stderr,"Printer: termina\n");
 	pthread_exit((void*)NULL);
 }
-
+*/
 //Inserimento ordinato nella lista dei risultati
 void list_insert(result_t *list, result_t *newnode) {
 	if(list==NULL) {	//inserimento in lista vuota
@@ -153,9 +154,11 @@ int main(int argc, char *argv[]) {
 	int i,j;					//indici scorrimento array
 	
 	/*Creazione del thread che stampa la lista ogni secondo*/
+	/*
 	pthread_t printer_thread;
 	ec_isnot(pthread_create(&printer_thread,NULL,&partial_print,(void*)results),0,"collector, pthread_create printer_thread");
 	fprintf(stderr,"Collector: thread printer lanciato\n");
+	*/
 	
 	/*Setup connessione*/
 	int fd_skt, fd_c;		//socket di server e di client
@@ -163,6 +166,9 @@ int main(int argc, char *argv[]) {
 	strncpy(sa.sun_path,argv[1],UNIX_PATH_MAX);
 	sa.sun_family=AF_UNIX;
 	ec_is(fd_skt=socket(AF_UNIX,SOCK_STREAM,0),-1,"collector, socket");
+	const int enable=1;
+	ec_is(setsockopt(fd_skt,SOL_SOCKET,SO_REUSEADDR,&enable,sizeof(int)),-1,"collector, setsockopt");
+	ec_is(setsockopt(fd_skt,SOL_SOCKET,SO_REUSEPORT,&enable,sizeof(int)),-1,"collector, setsockopt");
 	ec_is(bind(fd_skt,(struct sockaddr*)&sa,sizeof(sa)),-1,"collector, bind");
 	ec_is(listen(fd_skt,SOMAXCONN),-1,"collector, listen");
 	fprintf(stderr,"Collector: aperta socket di listen\n");
@@ -292,7 +298,7 @@ int main(int argc, char *argv[]) {
 	}
 	
 	free(pfds);		//dealloca la memoria di poll
-	pthread_join(printer_thread,(void*)NULL);	//aspetta che il printer thread termini da solo
+	//pthread_join(printer_thread,(void*)NULL);	//aspetta che il printer thread termini da solo
 	printlist(results);		//stampa la lista finale dei risultati
 	list_free(results);		//dealloca la memoria dei risultati
 	pthread_mutex_destroy(&mtx);	//dealloca mutex
