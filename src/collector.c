@@ -126,7 +126,7 @@ int main(int argc, char *argv[]) {
 		fprintf(stderr,"Collector: passato un numero sbagliato di argomenti\n");
 		exit(EXIT_FAILURE);
 	}
-	fprintf(stderr,"---Collector Parte---\n");
+	fprintf(stderr,"---Collector parte---\n");
 	
 	/*gestione segnali*/
 	sigset_t mask;	//maschera del collector
@@ -144,7 +144,7 @@ int main(int argc, char *argv[]) {
 	ec_is(sigaction(SIGUSR2,&collector_sa,NULL),-1,"collector, sigaddset SIGUSR2");
 	ec_is(sigaction(SIGPIPE,&collector_sa,NULL),-1,"collector, sigaddset SIGPIPE");
 	
-	fprintf(stderr,"Collector: settati segnali\n");
+	fprintf(stderr,"Collector: segnali settati\n");
 	
 	/*Setup variabili per il funzionamento del collector*/
 	running=1;					//server in funzionamento
@@ -166,9 +166,6 @@ int main(int argc, char *argv[]) {
 	strncpy(sa.sun_path,argv[1],UNIX_PATH_MAX);
 	sa.sun_family=AF_UNIX;
 	ec_is(fd_skt=socket(AF_UNIX,SOCK_STREAM,0),-1,"collector, socket");
-	const int enable=1;
-	ec_is(setsockopt(fd_skt,SOL_SOCKET,SO_REUSEADDR,&enable,sizeof(int)),-1,"collector, setsockopt");
-	ec_is(setsockopt(fd_skt,SOL_SOCKET,SO_REUSEPORT,&enable,sizeof(int)),-1,"collector, setsockopt");
 	ec_is(bind(fd_skt,(struct sockaddr*)&sa,sizeof(sa)),-1,"collector, bind");
 	ec_is(listen(fd_skt,SOMAXCONN),-1,"collector, listen");
 	fprintf(stderr,"Collector: aperta socket di listen\n");
@@ -200,7 +197,7 @@ int main(int argc, char *argv[]) {
 			if(pfds[i].revents==0)	//nessun evento/errore
 				continue;
 			if(pfds[i].revents & POLLIN)	//errore
-				fprintf(stderr,"aiuto\n");
+				fprintf(stderr,"Collector: questo errore non dovrebbe accadere\n");
 			
 			//ricevuta richiesta di nuova connessione client
 			if(pfds[i].fd==fd_skt) {

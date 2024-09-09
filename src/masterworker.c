@@ -111,7 +111,7 @@ void list_free(node_t *head) {
 }
 
 void masterworker(int argc, char *argv[], char *socket) {
-	fprintf(stderr,"---MasterWorker Parte---\n");
+	fprintf(stderr,"---MasterWorker parte---\n");
 	
 	/*impostazione valori globali*/
 	mw_running=1;
@@ -139,7 +139,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 	pthread_t sighandler_thread;
 	ec_isnot(pthread_create(&sighandler_thread,NULL,&sighandler,&mask),0,"masterworker, pthread_create sighandler");
 	ec_isnot(pthread_detach(sighandler_thread),0,"masterworker, pthread_detach");
-	DEBUG("Masterworker: segnali settati\n");
+	fprintf(stderr,"Masterworker: segnali settati\n");
 	
 	/*
 	//test sigmask
@@ -226,25 +226,25 @@ void masterworker(int argc, char *argv[], char *socket) {
 			fprintf(stderr,"Passata opzione -%c non riconosciuta.\n",opt);
 		}
 	}
-	DEBUG("Masterworker: getopt completata\n");
-	DEBUG("dim. iniziale threadpool: %ld\nlungh. coda: %ld\nritardo inserimento: %ld secondi\n", workers,queue_length,queue_delay);
+	fprintf(stderr,"Masterworker: getopt completata\n");
+	fprintf(stderr,"dim. iniziale threadpool: %ld\nlungh. coda: %ld\nritardo inserimento: %ld secondi\n", workers,queue_length,queue_delay);
 
 	/*creazione threadpool*/
 	threadpool_t *pool=initialize_pool(workers,queue_length,socket);
 	ec_is(pool,NULL,"masterworker, initialize_pool");
-	DEBUG("Masterworker: threadpool inizializzato\n");
+	fprintf(stderr,"Masterworker: threadpool inizializzato\n");
 	
 	/*impostazione del ritardo di inserimento*/
 	struct timespec delay, delay_rem;
 	delay.tv_sec=queue_delay/1000;
 	delay.tv_nsec=(queue_delay%1000)*1000000;
 	int sleep_result=0;
-	DEBUG("Masterworker: ritardo impostato\n");
+	fprintf(stderr,"Masterworker: ritardo impostato\n");
 
 	/*ricerca dei file da linea di comando*/
 	int i;
 	for(i=optind;i<argc;i++) {
-		DEBUG("Filefinder: argv[%d] inizia\n",i);
+		fprintf(stderr,"Filefinder: argv[%d] inizia\n",i);
 		pthread_mutex_lock(&mw_running_mtx);
 		if(!mw_running) {	//se bisogna chiudere anticipatamente il programma
 			fprintf(stderr,"Master: ho preso segnale di chiusura\n");
@@ -256,12 +256,12 @@ void masterworker(int argc, char *argv[], char *socket) {
 		//se bisogna cambiare il numero di worker
 		pthread_mutex_lock(&thread_num_mtx);
 		while(thread_num_change>0) {
-			DEBUG("Master: ricevuto SIGUSR1\n");
+			fprintf(stderr,"Master: ricevuto SIGUSR1\n");
 			add_worker(pool);
 			thread_num_change--;
 		}
 		while(thread_num_change<0) {
-			DEBUG("Master: ricevuto SIGUSR2\n");
+			fprintf(stderr,"Master: ricevuto SIGUSR2\n");
 			remove_worker(pool);
 			thread_num_change++;
 		}
@@ -274,7 +274,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 			continue;
 		}
 		if(!S_ISREG(info.st_mode))
-			DEBUG("Passato file %s non regolare da linea di comando, scartato.\n",argv[i]);
+			fprintf(stderr,"Passato file %s non regolare da linea di comando, scartato.\n",argv[i]);
 		else {	//inserimento con eventuale ritardo
 			sleep_result=nanosleep(&delay,&delay_rem);
 			while(sleep_result!=0) {
@@ -286,8 +286,8 @@ void masterworker(int argc, char *argv[], char *socket) {
 			
 			int res=enqueue_task(pool,argv[i]);
 			if(res)	//invio file
-				DEBUG("Filefinder: argv[%d], enqueue fallita con errore %d",i,res);
-			DEBUG("Filefinder: inserito file %s in coda\n",argv[i]);
+				fprintf(stderr,"Filefinder: argv[%d], enqueue fallita con errore %d",i,res);
+			fprintf(stderr,"Filefinder: inserito file %s in coda\n",argv[i]);
 		}
 	}
 	
@@ -305,12 +305,12 @@ void masterworker(int argc, char *argv[], char *socket) {
 		//se bisogna cambiare il numero di worker
 		pthread_mutex_lock(&thread_num_mtx);
 		while(thread_num_change>0) {	
-			DEBUG("Master: ricevuto SIGUSR1\n");
+			fprintf(stderr,"Master: ricevuto SIGUSR1\n");
 			add_worker(pool);
 			thread_num_change--;
 		}
 		while(thread_num_change<0) {
-			DEBUG("Master: ricevuto SIGUSR2\n");
+			fprintf(stderr,"Master: ricevuto SIGUSR2\n");
 			remove_worker(pool);
 			thread_num_change++;
 		}
@@ -319,14 +319,14 @@ void masterworker(int argc, char *argv[], char *socket) {
 		//apertura e ricerca nella directory corrente
 		DIR *dir=opendir(directories->name);
 		if(dir==NULL) {
-			DEBUG("Directory %s non trovata\n",directories->name);
+			fprintf(stderr,"Directory %s non trovata\n",directories->name);
 			continue;
 		}
 		struct dirent *file;
 		while((errno=0, file=readdir(dir))!=NULL) {
 			//controllo errno
 			if(errno!=0) {
-				DEBUG("Errore nell'apertura di %s\n",directories->name);
+				fprintf(stderr,"Errore nell'apertura di %s\n",directories->name);
 				ec_isnot(pthread_mutex_lock(&mw_running_mtx),0,"masterworker, mutex lock in dirsearch");
 				mw_running=0;
 				ec_isnot(pthread_mutex_unlock(&mw_running_mtx),0,"masterworker, mutex unlock in dirsearch");
@@ -344,12 +344,12 @@ void masterworker(int argc, char *argv[], char *socket) {
 			//se bisogna cambiare il numero di worker
 			pthread_mutex_lock(&thread_num_mtx);
 			while(thread_num_change>0) {	
-				DEBUG("Master: ricevuto SIGUSR1\n");
+				fprintf(stderr,"Master: ricevuto SIGUSR1\n");
 				add_worker(pool);
 				thread_num_change--;
 			}
 			while(thread_num_change<0) {
-				DEBUG("Master: ricevuto SIGUSR2\n");
+				fprintf(stderr,"Master: ricevuto SIGUSR2\n");
 				remove_worker(pool);
 				thread_num_change++;
 			}
@@ -359,7 +359,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 				continue;	//vai al prossimo file
 				
 			else if(file->d_type==DT_DIR) {	//trovata directory
-				DEBUG("trovata directory %s\n",file->d_name);
+				fprintf(stderr,"trovata directory %s\n",file->d_name);
 				dirs_add(&directories,file->d_name,directories->name);	//aggiunta in coda
 			}
 			
@@ -376,7 +376,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 				memset(fullpathname,0,MAX_PATHNAME_LEN);
 				snprintf(fullpathname,MAX_PATHNAME_LEN,"%s/%s",directories->name,file->d_name);
 				enqueue_task(pool,fullpathname);	//invio file
-				DEBUG("Filefinder: inserisco file %s\n",fullpathname);
+				fprintf(stderr,"Filefinder: inserisco file %s\n",fullpathname);
 			}
 			
 			else if(file->d_type==DT_UNKNOWN)
@@ -390,7 +390,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 		directories=directories->next;
 		free(aux);
 	}
-	DEBUG("masterworker: filefinder termina\n");
+	fprintf(stderr,"masterworker: filefinder termina\n");
 	
 	/*master non inserisce piu' file in coda e attende che il threadpool termini*/
 	long finalworkers=await_pool_completion(pool);
@@ -402,7 +402,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 			perror("masterworker, fopen nworkeratexit");
 		else {
 			fprintf(workers_file,"%ld\n",finalworkers);	//inserisci il numero di thread alla fine
-			DEBUG("Masterworker: ricevuti %ld worker\n",finalworkers);
+			fprintf(stderr,"Masterworker: ricevuti %ld worker\n",finalworkers);
 			fclose(workers_file);
 		}
 	}
@@ -411,5 +411,5 @@ void masterworker(int argc, char *argv[], char *socket) {
 	/*chiusura forzata del signal handler thread*/
 	if(mw_running) 
 		ec_isnot(pthread_kill(sighandler_thread,SIGQUIT),0,"masterworker, pthread_kill di signal handler");
-	DEBUG("Masterworker: chiusura\n");
+	fprintf(stderr,"Masterworker: chiusura\n");
 }
