@@ -1,10 +1,6 @@
 #ifndef THREADPOOL
 	#define THREADPOOL
 	
-	#ifndef MAX_PATHNAME_LEN
-		#define MAX_PATHNAME_LEN 1+MAX_NAMELENGTH
-	#endif
-	
 	//Struttura principale del threadpool
 	
 	//linked list di thread worker
@@ -15,7 +11,7 @@
 
 	typedef struct threadpool {	//struct threadpool;
 		_Atomic unsigned short running;		//coda attiva o no
-		char socket[MAX_PATHNAME_LEN];		//socket a cui si devono collegare i worker
+		char *socket;						//socket a cui si devono collegare i worker
 		workerlist_t *worker_head;			//puntatore di testa alla lista dei worker
 		workerlist_t *worker_tail;			//puntatore di coda alla suddetta lista
 		unsigned int num_threads;			//numero totale di worker, minimo 1
