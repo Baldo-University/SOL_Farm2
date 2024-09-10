@@ -1,4 +1,6 @@
 a quanto pare alcuni indirizzi non sono allocati?
 icollector entra in pfds[i].revents & POLLIN ma non dovrebbe... 
 
+collector si blocca nel loop do while di accept
+
 nota: se gli errori si rompono prova a mettere SIG_BLOCK invece di SIG_SETMASK nella maschera del master
