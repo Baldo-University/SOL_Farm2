@@ -311,7 +311,7 @@ long await_pool_completion(threadpool_t *pool) {
 		perror("pool, destroy_pool, pthread_cond_destroy empty_queue_cond");
 	if(pthread_cond_destroy(&pool->full_queue_cond))
 		perror("pool, destroy_pool, pthread_cond_destroy full_queue_cond");
-	free(pool->socket);
+	//free(pool->socket);
 	free(pool);
 	return workersatexit;
 }
@@ -336,14 +336,17 @@ threadpool_t *initialize_pool(long pool_size, size_t queue_len, char* socket) {
 	pool->worker_tail=NULL;
 	pool->tasks_head=NULL;
 	pool->tasks_tail=NULL;
+	memset(pool->socket,0,MAX_PATHNAME_LEN);
+	//fprintf(stderr,"Pool: strlen prima di pool->socket\n");
+	/*
 	pool->socket=malloc(strlen(socket)*sizeof(char));
 	if(pool->socket==NULL) {
 		fprintf(stderr,"pool, initialize_pool, non e' stato possibile allocare memoria alla stringa del socket\n");
 		free(pool);
 		return NULL;
 	}
-	strncpy(pool->socket,socket,strlen(socket));
-	fprintf(stderr,"Pool: la socket si chiama '%s'\n",pool->socket);
+	*/
+	strncpy(pool->socket,socket,MAX_PATHNAME_LEN);
 	pool->queue_size=queue_len;
 	
 	//inizializzazione mutex e cond
@@ -372,7 +375,7 @@ threadpool_t *initialize_pool(long pool_size, size_t queue_len, char* socket) {
 			perror("pool, initialize_pool, pthread_cond_destroy empty_queue_cond");
 		if(pthread_cond_destroy(&pool->full_queue_cond))
 			perror("pool, initialize_pool, pthread_cond_destroy full_queue_cond");
-		free(pool->socket);
+		//free(pool->socket);
 		free(pool);
 		return NULL;
 	}
