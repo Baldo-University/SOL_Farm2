@@ -51,9 +51,7 @@ static void *thread_func(void *arg) {
 	/*Setup connessione*/
 	int fd_skt;
 	struct sockaddr_un sa;
-	fprintf(stderr,"Worker: pre strncpy 1\n");
 	strncpy(sa.sun_path,pool->socket,UNIX_PATH_MAX);
-	fprintf(stderr,"Worker: post strncpy 1\n");
 	sa.sun_family=AF_UNIX;
 	if((fd_skt=socket(AF_UNIX,SOCK_STREAM,0))==-1) {
 		perror("worker, socket");
@@ -67,7 +65,7 @@ static void *thread_func(void *arg) {
 			pthread_exit((void*)NULL);
 		}
 	}
-	fprintf(stderr,"Worker: connessione\n");
+	fprintf(stderr,"Worker %d: connessione\n",id);
 	
 	while(pool->running) {
 		fprintf(stderr,"Worker %d: in task loop\n",id);
@@ -174,7 +172,7 @@ static void *thread_func(void *arg) {
 		perror("worker, write terminata male");
 	close(fd_skt);
 	
-	fprintf(stderr,"worker %d: uscita\n",id);
+	fprintf(stderr,"Worker %d: uscita\n",id);
 	pthread_exit((void*)NULL);
 }
 
@@ -311,7 +309,7 @@ long await_pool_completion(threadpool_t *pool) {
 		perror("pool, destroy_pool, pthread_cond_destroy empty_queue_cond");
 	if(pthread_cond_destroy(&pool->full_queue_cond))
 		perror("pool, destroy_pool, pthread_cond_destroy full_queue_cond");
-	//free(pool->socket);
+	free(pool->socket);
 	free(pool);
 	return workersatexit;
 }
@@ -336,16 +334,14 @@ threadpool_t *initialize_pool(long pool_size, size_t queue_len, char* socket) {
 	pool->worker_tail=NULL;
 	pool->tasks_head=NULL;
 	pool->tasks_tail=NULL;
-	memset(pool->socket,0,MAX_PATHNAME_LEN);
-	//fprintf(stderr,"Pool: strlen prima di pool->socket\n");
-	/*
-	pool->socket=malloc(strlen(socket)*sizeof(char));
+	//memset(pool->socket,0,MAX_PATHNAME_LEN);
+	fprintf(stderr,"Pool: strlen prima di pool->socket\n");
+	pool->socket=malloc(MAX_PATHNAME_LEN*sizeof(char));
 	if(pool->socket==NULL) {
 		fprintf(stderr,"pool, initialize_pool, non e' stato possibile allocare memoria alla stringa del socket\n");
 		free(pool);
 		return NULL;
 	}
-	*/
 	strncpy(pool->socket,socket,MAX_PATHNAME_LEN);
 	pool->queue_size=queue_len;
 	
@@ -375,7 +371,7 @@ threadpool_t *initialize_pool(long pool_size, size_t queue_len, char* socket) {
 			perror("pool, initialize_pool, pthread_cond_destroy empty_queue_cond");
 		if(pthread_cond_destroy(&pool->full_queue_cond))
 			perror("pool, initialize_pool, pthread_cond_destroy full_queue_cond");
-		//free(pool->socket);
+		free(pool->socket);
 		free(pool);
 		return NULL;
 	}

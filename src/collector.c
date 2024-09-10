@@ -182,9 +182,16 @@ int main(int argc, char *argv[]) {
 	fprintf(stderr,"Collector: inizializzato\n");
 	
 	/*loop di poll*/
-	pthread_mutex_lock(&mtx);
-	while(running) {
+	for(;;) {
+		fprintf(stderr,"Collector: inizio loop\n");
+		pthread_mutex_lock(&mtx);
+		if(!running) {
+			fprintf(stderr,"Collector: running==0;\n");
+			pthread_mutex_unlock(&mtx);
+			break;
+		}
 		pthread_mutex_unlock(&mtx);
+		
 		ec_is(poll_ret=poll(pfds,nfds,POLL_TIMEOUT),-1,"collector, poll");
 		if(!poll_ret) {
 			fprintf(stderr,"Collector: raggiunto timeout poll\n");
@@ -194,15 +201,17 @@ int main(int argc, char *argv[]) {
 		/*iterazione sulle connessioni stabilite*/
 		cur_nfds=nfds;
 		for(i=0;i<cur_nfds;i++) {
+			fprintf(stderr,"Collector: in loop cur_nfds\n");
 			if(pfds[i].revents==0)	//nessun evento/errore
 				continue;
-			if(pfds[i].revents & POLLIN)	//errore
+			if(!(pfds[i].revents & POLLIN))	//errore
 				fprintf(stderr,"Collector: questo errore non dovrebbe accadere\n");
 			
 			//ricevuta richiesta di nuova connessione client
 			if(pfds[i].fd==fd_skt) {
 				fprintf(stderr,"Collector: richiesta nuova connessione\n");
 				do {
+					fprintf(stderr,"Collector: prima di accept\n");
 					fd_c=accept(fd_skt,NULL,0);
 					if(fd_c<0) {
 						if(errno==EAGAIN || errno==EWOULDBLOCK)	//controllo per portabilita'
@@ -222,11 +231,13 @@ int main(int argc, char *argv[]) {
 								reallocable=0;
 							}
 							else {
+								fprintf(stderr,"Collector: aggiunta memoria extra\n");
 								memset(pfds+POLL_SIZE,0,POLL_SIZE);	//necessaria, realloc non la fa automaticamente
 								poll_size+=POLL_SIZE;
 							}
 						}
 						if(reallocable) {	//spazio di poll disponibile
+							fprintf(stderr,"Collector: assegna indice di poll al client\n");
 							pfds[nfds].fd=fd_c;	//si salva il socket del client in una posizione vuota di poll
 							pfds[nfds].events=POLLIN;	//aperto alla lettura di dati
 							nfds++;	//aumenta di uno il numero di connessioni e punta all;indice successivo di poll
@@ -258,6 +269,7 @@ int main(int argc, char *argv[]) {
 				
 				//controlla se ha ricevuto messaggio di disconnessione
 				if(!strncmp(new_res->pathname,DISCONNECT,strlen(DISCONNECT)) && new_res->total<0) {
+					fprintf(stderr,"Collector: chiusura del client %d\n",pfds[i].fd);
 					free(new_res);	//non si inserisce nella lista dei risultati
 					close(pfds[i].fd);
 					pfds[i].fd=-1;	//indice poll da ripulire in seguito
@@ -267,6 +279,7 @@ int main(int argc, char *argv[]) {
 				else {	//inserimento in lista
 					pthread_mutex_lock(&mtx);
 					list_insert(results,new_res);
+					fprintf(stderr,"Collector: client %d inserisce un risultato\n",pfds[i].fd);
 					pthread_mutex_unlock(&mtx);
 				}
 			}
@@ -274,6 +287,7 @@ int main(int argc, char *argv[]) {
 		
 		/*pulizia poll*/
 		for(i=0;i<nfds;i++) {
+			fprintf(stderr,"Collector: loop pulizia numero %d\n",i);
 			if(pfds[i].fd==-1) {	//connessione chiusa
 				for(j=i;j<nfds;j++) {	//shift di posizioni dei restanti indici
 					pfds[j].fd=pfds[j+1].fd;
@@ -281,6 +295,7 @@ int main(int argc, char *argv[]) {
 				}
 				i--;
 				nfds--;
+				fprintf(stderr,"Collector: rimosso un client\n");
 			}
 		}
 		
@@ -289,6 +304,7 @@ int main(int argc, char *argv[]) {
 			if(nfds==1) {	//solo fd_skt rimane aperta, tutti i client si sono disconnessi
 				pthread_mutex_lock(&mtx);
 				running=0;
+				fprintf(stderr,"Collector: running settato a zero\n");
 				pthread_mutex_unlock(&mtx);
 			}
 		}

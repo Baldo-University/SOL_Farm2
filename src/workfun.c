@@ -12,7 +12,7 @@ prodotto tra 'i' e l'i-esimo intero.
 #include <errno.h>
 #include <stdio.h>
 
-long workfun(char *filename){
+long workfun(char *filename) {
 	long result=0;
 	FILE *task=fopen(filename,"r");	//apertura del file con bufferized I/O
 	if(task==NULL) {

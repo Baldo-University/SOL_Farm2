@@ -55,7 +55,7 @@ int main(int argc, char *argv[]) {
 	int collector_status;
 	collector=waitpid(collector,&collector_status,0);
 	if(WIFEXITED(collector_status))
-		fprintf(stderr,"Stato collector: %d\n",WEXITSTATUS(collector_status));
+		fprintf(stderr,"Main: stato collector: %d\n",WEXITSTATUS(collector_status));
 	
 	fprintf(stderr,"Fine programma\n");
 	return 0;
