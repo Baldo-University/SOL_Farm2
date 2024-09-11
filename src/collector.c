@@ -86,6 +86,7 @@ void list_insert(result_t *list, result_t *newnode) {
 		newnode->next=NULL;
 		list=newnode;
 		fprintf(stderr,"Collector: inserimento risultato in lista vuota\n");
+		printlist(list);
 	}
 	else {
 		if(list->next==NULL) {	//coda ad un solo elemento
@@ -191,7 +192,7 @@ int main(int argc, char *argv[]) {
 		//controllo di running
 		pthread_mutex_lock(&mtx);
 		if(!running) {
-			fprintf(stderr,"Collector: running==0;\n");
+			fprintf(stderr,"Collector: cessa il loop\n");
 			pthread_mutex_unlock(&mtx);
 			break;
 		}
@@ -301,7 +302,7 @@ int main(int argc, char *argv[]) {
 		
 		/*pulizia poll*/
 		for(i=0;i<nfds;i++) {
-			fprintf(stderr,"Collector: loop pulizia numero %d\n",i);
+			fprintf(stderr,"Collector: loop pulizia\n");
 			if(pfds[i].fd==-1) {	//connessione chiusa
 				for(j=i;j<nfds;j++) {	//shift di posizioni dei restanti indici
 					pfds[j].fd=pfds[j+1].fd;
