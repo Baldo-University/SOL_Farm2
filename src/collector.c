@@ -81,34 +81,18 @@ static void *partial_print(void *arg) {
 }
 */
 //Inserimento ordinato nella lista dei risultati
-void list_insert(result_t *list, result_t *newnode) {
-	if(list==NULL) {	//inserimento in lista vuota
-		newnode->next=NULL;
-		list=newnode;
-		fprintf(stderr,"Collector: inserimento risultato in lista vuota\n");
-		printlist(list);
+void list_insert(result_t **list, result_t *newnode) {
+	if(*list==NULL || (*list)->total >= newnode->total) {	//lista vuota o elemento minore stretto del primo
+		newnode->next=*list;
+		*list=newnode;
+		fprintf(stderr,"Collector: inserito file in testa alla lista\n");
 	}
 	else {
-		if(list->next==NULL) {	//coda ad un solo elemento
-			if(list->total>newnode->total) {	//nuovo elemento strettamente minore
-				newnode->next=list;
-				list=newnode;
-				fprintf(stderr,"Collector: inserimento risultato in testa di lista con un solo elemento\n");
-			}
-			else {	//nuovo elemento uguale o maggiore
-				newnode->next=NULL;
-				list->next=newnode;
-				fprintf(stderr,"Collector: inserimento risultato in coda di lista con un solo elemento\n");
-			}
-		}
-		else {	//coda con almeno due elementi
-			result_t *aux=list;
-			while(aux->next!=NULL && aux->total<newnode->total)	//scorri le posizioni
-				aux=aux->next;
-			newnode->next=aux->next;
-			aux->next=newnode;
-			fprintf(stderr,"Collector: inserimento risultato ordinato in lista con almeno due elementi\n");
-		}
+		result_t *aux=*list;
+		while(aux->next!=NULL && aux->next->total < newnode->total)
+			aux=aux->next;
+		newnode->next=aux->next;
+		aux->next=newnode;
 	}
 }
 
@@ -293,7 +277,7 @@ int main(int argc, char *argv[]) {
 				}
 				else {	//inserimento in lista
 					pthread_mutex_lock(&mtx);
-					list_insert(results,new_res);
+					list_insert(&results,new_res);
 					fprintf(stderr,"Collector: client %d inserisce un risultato\n",pfds[i].fd);
 					pthread_mutex_unlock(&mtx);
 				}
