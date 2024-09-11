@@ -143,6 +143,7 @@ static void *thread_func(void *arg) {
 		}
 		if(to_write!=0 && errno!=EPIPE)
 			perror("worker, write terminata male");
+		fprintf(stderr,"Worker %d: inviato %ld\t%s\n",id,result,buf);
 	}
 	
 	/*disconnessione dal collector*/

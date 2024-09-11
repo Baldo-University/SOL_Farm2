@@ -200,7 +200,7 @@ int main(int argc, char *argv[]) {
 			if(pfds[i].revents==0)	//nessun evento/errore
 				continue;
 			if(pfds[i].revents != POLLIN) {	//errore
-				fprintf(stderr,"Collector: questo errore non dovrebbe accadere\n");
+				fprintf(stderr,"Collector: ricevuto evento diverso da POLLIN\n");
 				running=0;
 				break;
 			}
