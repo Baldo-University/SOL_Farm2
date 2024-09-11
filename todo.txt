@@ -1,4 +1,5 @@
-collector: problemi di inserimento nella lista finale (i nodi sembrano perdersi...)
-collector: l'errore di ___ pfds[i].revents != POLLIN __ si ripete
+collector: avviene l'errore di ___ pfds[i].revents != POLLIN __ che non dovrebbe avvenire
+collector: forse non stampa sempre tutti i file
+problemi di tempismo?
 
 nota: se gli errori si rompono prova a mettere SIG_BLOCK invece di SIG_SETMASK nella maschera del master
