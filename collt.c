@@ -5,11 +5,14 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/un.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #include "message.h"
 #include "utils.h"
 
-#define SOCKNAME ".littlefarm.sck"
+#define SOCKNAME "littlefarm.sck"
+#define SAMPLE "cline1"
 
 long workfun(char *filename) {
 	long result=0;
@@ -32,9 +35,11 @@ long workfun(char *filename) {
 }
 
 int main (void) {
-	int fd_skt;
+	int fd_skt=0;
 	struct sockaddr_un sa;
-	int already_written=0, just_written=0, to_write=0; 
+	int already_written=0, just_written=0, to_write=0;
+	char buf[BUFFER_SIZE];
+	long result=0;
 	
 	pid_t collector=fork();
 	switch(collector) {
@@ -62,10 +67,52 @@ int main (void) {
 		}
 		fprintf(stderr,"Client: connesso al collector\n");
 		
+		//invio risultato di prova
+		result=workfun(SAMPLE);
+		memset(buf,0,BUFFER_SIZE);
+		strncpy(buf,SAMPLE,MAX_PATHNAME_LEN);
+		memcpy(buf+MAX_PATHNAME_LEN,&(result),sizeof(long));
 		already_written=0;
-		to_write=
+		to_write=sizeof(message_t);
+		while(to_write>0) {
+			just_written=write(fd_skt,buf+already_written,to_write);
+			if(just_written<0) {	//errore
+				if(errno==EPIPE)	//connessione chiusa, SIGPIPE per fortuna viene ignorato
+					fprintf(stderr,"Client: connessione terminata\n");
+				else
+					perror("worker, errore di write");
+				break;
+			}
+			already_written+=just_written;
+				to_write-=just_written;
+		}
+		if(to_write!=0 && errno!=EPIPE)
+			perror("worker, write terminata male");
+		fprintf(stderr,"Client: inviato messaggio con risultato\n");
 		
-		
+		//invio messaggio di chiusura
+		result=-1;
+		memset(buf,0,BUFFER_SIZE);
+		strncpy(buf,DISCONNECT,MAX_PATHNAME_LEN);
+		memcpy(buf+MAX_PATHNAME_LEN,&(result),sizeof(long));
+		already_written=0;
+		to_write=sizeof(message_t);
+		while(to_write>0) {
+			just_written=write(fd_skt,buf+already_written,to_write);
+			if(just_written<0) {	//errore
+				if(errno==EPIPE)	//connessione chiusa, SIGPIPE per fortuna viene ignorato
+					fprintf(stderr,"Client: connessione terminata\n");
+				else
+					perror("worker, errore di write");
+				break;
+			}
+			already_written+=just_written;
+				to_write-=just_written;
+		}
+		if(to_write!=0 && errno!=EPIPE)
+			perror("worker, write terminata male");
+		close(fd_skt);
+		fprintf(stderr,"Client: inviato messaggio di chiusura\n");
 	}
 	
 	int collector_status;
