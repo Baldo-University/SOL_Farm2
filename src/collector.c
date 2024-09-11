@@ -9,6 +9,7 @@ Questa sezione di codice contiene la parte del processo Collector
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/un.h>
@@ -149,6 +150,7 @@ int main(int argc, char *argv[]) {
 	/*Setup variabili per il funzionamento del collector*/
 	running=1;					//server in funzionamento
 	int any_closed=0;			//settato a 1 quando viene chiusa una connessione, necessario per chiudere il server
+	int on=1;					//per ioctl
 	result_t *results=NULL;		//lista dei risultati
 	char buf[BUFFER_SIZE];		//buffer per salvare i dati client
 	int i,j;					//indici scorrimento array
@@ -161,11 +163,12 @@ int main(int argc, char *argv[]) {
 	*/
 	
 	/*Setup connessione*/
-	int fd_skt, fd_c;		//socket di server e di client
+	int fd_skt=-1, fd_c=-1;		//socket di server e di client
 	struct sockaddr_un sa;
 	strncpy(sa.sun_path,argv[1],UNIX_PATH_MAX);
 	sa.sun_family=AF_UNIX;
 	ec_is(fd_skt=socket(AF_UNIX,SOCK_STREAM,0),-1,"collector, socket");
+	ec_is(ioctl(fd_skt,FIONBIO,(char*)&on),-1,"collector, ioctl");				//server nonblocking
 	ec_is(bind(fd_skt,(struct sockaddr*)&sa,sizeof(sa)),-1,"collector, bind");
 	ec_is(listen(fd_skt,SOMAXCONN),-1,"collector, listen");
 	fprintf(stderr,"Collector: aperta socket di listen\n");
@@ -184,6 +187,8 @@ int main(int argc, char *argv[]) {
 	/*loop di poll*/
 	for(;;) {
 		fprintf(stderr,"Collector: inizio loop\n");
+		
+		//controllo di running
 		pthread_mutex_lock(&mtx);
 		if(!running) {
 			fprintf(stderr,"Collector: running==0;\n");
@@ -192,9 +197,14 @@ int main(int argc, char *argv[]) {
 		}
 		pthread_mutex_unlock(&mtx);
 		
+		fprintf(stderr,"Collector: in attesa di poll\n");
 		ec_is(poll_ret=poll(pfds,nfds,POLL_TIMEOUT),-1,"collector, poll");
-		if(!poll_ret) {
-			fprintf(stderr,"Collector: raggiunto timeout poll\n");
+		if(poll_ret<0) {
+			perror("collector, poll");
+			break;
+		}
+		if(poll_ret==0) {
+			fprintf(stderr,"Collector: raggiunto timeout poll. Inizio chiusura\n");
 			break;
 		}
 		
@@ -204,20 +214,24 @@ int main(int argc, char *argv[]) {
 			fprintf(stderr,"Collector: in loop cur_nfds\n");
 			if(pfds[i].revents==0)	//nessun evento/errore
 				continue;
-			if(!(pfds[i].revents & POLLIN))	//errore
+			if(pfds[i].revents != POLLIN) {	//errore
 				fprintf(stderr,"Collector: questo errore non dovrebbe accadere\n");
-			
+				running=0;
+				break;
+			}
 			//ricevuta richiesta di nuova connessione client
 			if(pfds[i].fd==fd_skt) {
 				fprintf(stderr,"Collector: richiesta nuova connessione\n");
 				do {
 					fprintf(stderr,"Collector: prima di accept\n");
-					fd_c=accept(fd_skt,NULL,0);
+					fd_c=accept(fd_skt,NULL,NULL);
+					fprintf(stderr,"Collector: dopo accept\n");
 					if(fd_c<0) {
 						if(errno==EAGAIN || errno==EWOULDBLOCK)	//controllo per portabilita'
 							errno=0;
 						else
-							perror("collector, accept nel loop");
+							perror("collector, accept");
+							
 					}
 					else {
 						fprintf(stderr,"Collector: accettato client con fd %d\n",fd_c);
@@ -237,13 +251,13 @@ int main(int argc, char *argv[]) {
 							}
 						}
 						if(reallocable) {	//spazio di poll disponibile
-							fprintf(stderr,"Collector: assegna indice di poll al client\n");
+							fprintf(stderr,"Collector: assegna indice %d di poll al client\n",nfds);
 							pfds[nfds].fd=fd_c;	//si salva il socket del client in una posizione vuota di poll
 							pfds[nfds].events=POLLIN;	//aperto alla lettura di dati
 							nfds++;	//aumenta di uno il numero di connessioni e punta all;indice successivo di poll
 						}
 					}
-				} while(fd_c>=0);
+				} while(fd_c!=-1);
 			}
 			
 			//ricevuti dati da client
