@@ -90,6 +90,7 @@ int main (void) {
 			perror("worker, write terminata male");
 		fprintf(stderr,"Client: inviato messaggio con risultato\n");
 		
+		/*
 		//invio messaggio di chiusura
 		result=-1;
 		memset(buf,0,BUFFER_SIZE);
@@ -111,7 +112,8 @@ int main (void) {
 		}
 		if(to_write!=0 && errno!=EPIPE)
 			perror("worker, write terminata male");
-		close(fd_skt);
+		*/
+		close(fd_skt);	//chiusura socket
 		fprintf(stderr,"Client: inviato messaggio di chiusura\n");
 	}
 	
