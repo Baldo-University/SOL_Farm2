@@ -72,8 +72,8 @@ int main (void) {
 		
 		//setup ritardo
 		struct timespec delay, delay_rem;
-		delay.tv_sec=1;
-		delay.tv_nsec=1000000;
+		delay.tv_sec=3;
+		delay.tv_nsec=0;
 		int sleep_result=0;
 		
 		//invio primo risultato di prova
