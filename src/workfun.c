@@ -12,11 +12,13 @@ prodotto tra 'i' e l'i-esimo intero.
 #include <errno.h>
 #include <stdio.h>
 
+#include "utils.h"
+
 long workfun(char *filename) {
 	long result=0;
 	FILE *task=fopen(filename,"r");	//apertura del file con bufferized I/O
 	if(task==NULL) {
-		perror("workfun, fopen");
+		DEBUG_PERROR("workfun, fopen");
 		return -1;
 	}
 	long buf;	//buffer che contiene il byte corrente
@@ -26,8 +28,8 @@ long workfun(char *filename) {
 		i++;
 	}
 	if(ferror(task) || !feof(task))
-		fprintf(stderr,"Workfun: errore durante la lettura del file. Risultato non affidabile\n");
+		DEBUG("Workfun: errore durante la lettura del file. Risultato non affidabile\n");
 	if(fclose(task)!=0)
-		perror("workfun, fclose");
+		DEBUG_PERROR("workfun, fclose");
 	return result;
 }
