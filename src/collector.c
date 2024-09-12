@@ -199,11 +199,9 @@ int main(int argc, char *argv[]) {
 			fprintf(stderr,"Collector: in loop cur_nfds\n");
 			if(pfds[i].revents==0)	//nessun evento/errore
 				continue;
-			if(pfds[i].revents != POLLIN) {	//errore
+			if(pfds[i].revents != POLLIN)	//errore
 				fprintf(stderr,"Collector: ricevuto evento diverso da POLLIN\n");
-				running=0;
-				break;
-			}
+			
 			//ricevuta richiesta di nuova connessione client
 			if(pfds[i].fd==fd_skt) {
 				fprintf(stderr,"Collector: richiesta nuova connessione\n");
@@ -260,19 +258,29 @@ int main(int argc, char *argv[]) {
 				}
 				if(to_read!=0)
 					perror("collector, read non completata");
-				
-				result_t *new_res;		//copia lato server del risultato
-				ec_is(new_res=(result_t*)malloc(sizeof(result_t)),NULL,"collector, allocazione memoria temp");
-				strncpy(new_res->pathname,buf,sizeof(new_res->pathname));
-				memcpy(&(new_res->total),buf+sizeof(new_res->pathname),sizeof(new_res->total));
-				
+				else if(just_read==0) {	//close di socket
+					fprintf(stderr,"Collector: chiusura del client %d\n",pfds[i].fd);
+					close(pfds[i].fd);	//chiusura lato server della socket
+					pfds[i].fd=-1;		//indice poll segnalato come da pulire
+					any_closed=1;		//da qui in poi se tutti i client sono disconnessi il server chiude
+				}
+				else {
+					result_t *new_res;		//copia lato server del risultato
+					ec_is(new_res=(result_t*)malloc(sizeof(result_t)),NULL,"collector, allocazione memoria temp");
+					strncpy(new_res->pathname,buf,sizeof(new_res->pathname));
+					memcpy(&(new_res->total),buf+sizeof(new_res->pathname),sizeof(new_res->total));
+					pthread_mutex_lock(&mtx);
+					list_insert(&results,new_res);
+					pthread_mutex_unlock(&mtx);
+					fprintf(stderr,"Collector: client %d inserisce un risultato\n",pfds[i].fd);
+				}
+				/*
 				//controlla se ha ricevuto messaggio di disconnessione
 				if(!strncmp(new_res->pathname,DISCONNECT,strlen(DISCONNECT)) && new_res->total<0) {
 					fprintf(stderr,"Collector: chiusura del client %d\n",pfds[i].fd);
 					free(new_res);	//non si inserisce nella lista dei risultati
 					close(pfds[i].fd);
 					pfds[i].fd=-1;	//indice poll da ripulire in seguito
-					//nfds--;
 					any_closed=1;	//da questo punto in poi se abbiamo solo la socket fd_skt il server chiude
 				}
 				else {	//inserimento in lista
@@ -281,6 +289,7 @@ int main(int argc, char *argv[]) {
 					fprintf(stderr,"Collector: client %d inserisce un risultato\n",pfds[i].fd);
 					pthread_mutex_unlock(&mtx);
 				}
+				*/
 			}
 		}
 		

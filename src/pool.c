@@ -147,6 +147,7 @@ static void *thread_func(void *arg) {
 	}
 	
 	/*disconnessione dal collector*/
+	/*
 	memset(buf,0,BUFFER_SIZE);	//ripulisce il buffer per inviare il messaggio di chiusura connessione
 	result=-1;
 	strncpy(buf,DISCONNECT,strnlen(DISCONNECT,MAX_PATHNAME_LEN));
@@ -168,6 +169,7 @@ static void *thread_func(void *arg) {
 	}
 	if(to_write!=0 && errno!=EPIPE)
 		perror("worker, write terminata male");
+	*/
 	close(fd_skt);
 	
 	fprintf(stderr,"Worker %d: uscita\n",id);
