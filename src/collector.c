@@ -135,6 +135,7 @@ int main(int argc, char *argv[]) {
 	/*Setup variabili per il funzionamento del collector*/
 	running=1;					//server in funzionamento
 	int any_closed=0;			//settato a 1 quando viene chiusa una connessione, necessario per chiudere il server
+	int close_conn=0;			//per capire se chiudere una connessione client
 	int on=1;					//per ioctl
 	result_t *results=NULL;		//lista dei risultati
 	char buf[BUFFER_SIZE];		//buffer per salvare i dati client
@@ -202,13 +203,15 @@ int main(int argc, char *argv[]) {
 		pthread_mutex_unlock(&mtx);
 		
 		fprintf(stderr,"Collector: in attesa di poll\n");
-		ec_is(poll_ret=poll(pfds,nfds,POLL_TIMEOUT),-1,"collector, poll");
+		poll_ret=poll(pfds,nfds,POLL_TIMEOUT)
 		if(poll_ret<0) {
-			perror("collector, poll");
+			perror("collector, poll fallisce");
+			running=0;
 			break;
 		}
 		if(poll_ret==0) {
 			fprintf(stderr,"Collector: raggiunto timeout poll. Inizio chiusura\n");
+			running=0;
 			break;
 		}
 		
@@ -216,8 +219,10 @@ int main(int argc, char *argv[]) {
 		cur_nfds=nfds;
 		for(i=0;i<cur_nfds;i++) {
 			fprintf(stderr,"Collector: in loop cur_nfds\n");
-			if(pfds[i].revents==0)	//nessun evento/errore
-				continue;
+			if(pfds[i].revents==0) {	//nessun evento/errore
+				fprintf(stderr,"Collector: non ricevuto alcun evento da %d\n",pfds[i].fd);
+				continue;	
+			}
 			if(pfds[i].revents != POLLIN)	//errore
 				fprintf(stderr,"Collector: ricevuto evento diverso da POLLIN\n");
 			
@@ -225,17 +230,15 @@ int main(int argc, char *argv[]) {
 			if(pfds[i].fd==fd_skt) {
 				fprintf(stderr,"Collector: richiesta nuova connessione\n");
 				do {
-					fprintf(stderr,"Collector: prima di accept\n");
 					fd_c=accept(fd_skt,NULL,NULL);
-					fprintf(stderr,"Collector: dopo accept\n");
-					if(fd_c<0) {
-						if(errno==EAGAIN || errno==EWOULDBLOCK)	//controllo per portabilita'
-							errno=0;
-						else
+					if(fd_c<0) {	//errore
+						if(errno!=EAGAIN || errno!=EWOULDBLOCK) {	//controllo nonblocking
 							perror("collector, accept");
-							
+							running=0;
+						}
+						break;	//questa socket non ha piu' nulla da scrivere
 					}
-					else {
+					else {	//stabilita connessione
 						fprintf(stderr,"Collector: accettato client con fd %d\n",fd_c);
 						int reallocable=1;		//per indicare se abbiamo spazio in memoria per allargare poll
 						//controlla che ci sia spazio nel poll_size	
@@ -246,7 +249,7 @@ int main(int argc, char *argv[]) {
 								perror("collector, realloc in loop");
 								reallocable=0;
 							}
-							else {
+							else {	//rialloca la memoria di pollfd e la 'allarga'
 								fprintf(stderr,"Collector: aggiunta memoria extra\n");
 								memset(pfds+POLL_SIZE,0,POLL_SIZE);	//necessaria, realloc non la fa automaticamente
 								poll_size+=POLL_SIZE;
@@ -264,6 +267,59 @@ int main(int argc, char *argv[]) {
 			
 			//ricevuti dati da client
 			else {
+				fprintf(stderr,"Collector: client %d invia uno o piu' risultati\n",pfds[i].fd);
+				close_conn=0;	//settato a zero, se si verificano problemi si setta ad 1
+				do {	//loop lettura dati fino a che read non restituisce EAGAIN/EWOULDBLOCK
+					int already_read=0;				//mantiene la posizione dell'ultimo byte letto
+					int just_read;					//byte letti con read()
+					int to_read=sizeof(message_t);	//byte restanti da leggere
+					while(to_read>0) {	//lettura
+						just_read=read(pfds[i].fd,&(buf[already_read]),to_read);
+							if(just_read<0){
+								if(errno!=EAGAIN || errno!=EWOULDBLOCK) {	//chiusura connessione
+									perror("collector, read");
+									close_conn=1;	//la connessione verra' chiusa per sicurezza
+								}
+								break;	//esce dal while di lettura messaggio
+							}
+						already_read+=just_read;
+						to_read-=just_read;
+					}
+					if(to_read!=0) {	//errore, read uscita per errore o read non completata
+						if(to_read>0)	//qualcosa non va nella read...
+							perror("collector, read non completata");
+						break;	//in ogni caso, esce dal do-while
+					}
+					/*
+					if(close_conn)
+						break;	//uscita dal do-while
+					*/
+					if(just_read==0) {	//client ha chiuso la socket
+						fprintf(stderr,"Collector: client %d chiude la connessione\n".pfds[i].fd);
+						close_conn=1;
+						break;	//va a chiudere la socket lato client
+					}
+					
+					//ricevuto risultato effettivo da mettere in lista
+					fprintf(stderr,"Collector: risultato di %d ricevuto\n",pfds[i].fd);
+					result_t *new_res;
+					ec_is(new_res=(result_t*)malloc(sizeof(result_t)),NULL,"collector, allocazione memoria temp");
+					strncpy(new_res->pathname,buf,sizeof(new_res->pathname));
+					memcpy(&(new_res->total),buf+sizeof(new_res->pathname),sizeof(new_res->total));
+					pthread_mutex_lock(&mtx);
+					fprintf(stderr,"Collector: client %d inserisce un risultato\n",pfds[i].fd);
+					list_insert(&results,new_res);
+					pthread_mutex_unlock(&mtx);
+					
+				} while(1);
+				
+				if(close_conn) {	//chiusura socket lato server
+					close(pfds[i].fd);	//close vera e propria
+					pfds[i].fd=-1;		//segnala alla struct pollfd che va pulito un file descriptor
+					//da ora in poi se nfds==1 si chiude il server perche' non ci sono piu' worker collegati
+					any_closed=1;
+				}
+				/*
 				fprintf(stderr,"Collector: ricevuto risultato da client %d\n",pfds[i].fd);
 				int already_read=0;				//mantiene la posizione dell'ultimo byte letto
 				int just_read;					//byte letti con read()
@@ -275,15 +331,19 @@ int main(int argc, char *argv[]) {
 					already_read+=just_read;
 					to_read-=just_read;
 				}
-				if(to_read!=0)
+				if(to_read!=0)	//errore
 					perror("collector, read non completata");
+					
+				fprintf("Collector: letti %d byte da client %d\n",just_read,pfds[i].fd);
+				
 				else if(just_read==0) {	//close di socket
 					fprintf(stderr,"Collector: chiusura del client %d\n",pfds[i].fd);
 					close(pfds[i].fd);	//chiusura lato server della socket
 					pfds[i].fd=-1;		//indice poll segnalato come da pulire
 					any_closed=1;		//da qui in poi se tutti i client sono disconnessi il server chiude
 				}
-				else {
+				
+				else {	//letto un nuovo risultato
 					result_t *new_res;		//copia lato server del risultato
 					ec_is(new_res=(result_t*)malloc(sizeof(result_t)),NULL,"collector, allocazione memoria temp");
 					strncpy(new_res->pathname,buf,sizeof(new_res->pathname));
@@ -293,6 +353,7 @@ int main(int argc, char *argv[]) {
 					pthread_mutex_unlock(&mtx);
 					fprintf(stderr,"Collector: client %d inserisce un risultato\n",pfds[i].fd);
 				}
+				*/
 				/*
 				//controlla se ha ricevuto messaggio di disconnessione
 				if(!strncmp(new_res->pathname,DISCONNECT,strlen(DISCONNECT)) && new_res->total<0) {
