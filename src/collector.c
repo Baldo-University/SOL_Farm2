@@ -39,11 +39,11 @@ void printlist(result_t *list) {
 		aux=aux->next;
 	}
 }
-/*
+
 //Funzione thread che stampa la lista incompleta di risultati ogni secondo
 static void *partial_print(void *arg) {
 	fprintf(stderr,"Printer: parte\n");
-	result_t *results=(result_t*)arg;
+	result_t **results=(result_t**)arg;
 	struct timespec print_time, print_rem;
 	print_time.tv_sec=1;
 	print_time.tv_nsec=0;
@@ -73,13 +73,13 @@ static void *partial_print(void *arg) {
 			break;
 		}
 		fprintf(stderr,"Printer: stampa i risultati\n");
-		printlist(results);
+		printlist(*results);
 		pthread_mutex_unlock(&mtx);
 	}
 	fprintf(stderr,"Printer: termina\n");
 	pthread_exit((void*)NULL);
 }
-*/
+
 //Inserimento ordinato nella lista dei risultati
 void list_insert(result_t **list, result_t *newnode) {
 	if(*list==NULL || (*list)->total >= newnode->total) {	//lista vuota o elemento minore stretto del primo
@@ -93,6 +93,7 @@ void list_insert(result_t **list, result_t *newnode) {
 			aux=aux->next;
 		newnode->next=aux->next;
 		aux->next=newnode;
+		fprintf(stderr,"Collector: inserito file in maniera ordinata nella lista\n");
 	}
 }
 
@@ -141,11 +142,9 @@ int main(int argc, char *argv[]) {
 	int i,j;					//indici scorrimento array
 	
 	/*Creazione del thread che stampa la lista ogni secondo*/
-	/*
 	pthread_t printer_thread;
-	ec_isnot(pthread_create(&printer_thread,NULL,&partial_print,(void*)results),0,"collector, pthread_create printer_thread");
+	ec_isnot(pthread_create(&printer_thread,NULL,&partial_print,(void*)&results),0,"collector, pthread_create printer_thread");
 	fprintf(stderr,"Collector: thread printer lanciato\n");
-	*/
 	
 	/*Setup connessione*/
 	int fd_skt=-1, fd_c=-1;		//socket di server e di client
@@ -195,7 +194,7 @@ int main(int argc, char *argv[]) {
 		//controllo di running
 		pthread_mutex_lock(&mtx);
 		if(!running) {
-			fprintf(stderr,"Collector: cessa il loop\n");
+			fprintf(stderr,"Collector: il loop cessa\n");
 			pthread_mutex_unlock(&mtx);
 			break;
 		}
@@ -318,62 +317,11 @@ int main(int argc, char *argv[]) {
 					//da ora in poi se nfds==1 si chiude il server perche' non ci sono piu' worker collegati
 					any_closed=1;
 				}
-				/*
-				fprintf(stderr,"Collector: ricevuto risultato da client %d\n",pfds[i].fd);
-				int already_read=0;				//mantiene la posizione dell'ultimo byte letto
-				int just_read;					//byte letti con read()
-				int to_read=sizeof(message_t);	//byte restanti da leggere
-				while(to_read>0) {	//lettura
-					just_read=read(pfds[i].fd,&(buf[already_read]),to_read);
-					if(just_read<0) 
-						perror("collector, read");
-					already_read+=just_read;
-					to_read-=just_read;
-				}
-				if(to_read!=0)	//errore
-					perror("collector, read non completata");
-					
-				fprintf("Collector: letti %d byte da client %d\n",just_read,pfds[i].fd);
-				
-				else if(just_read==0) {	//close di socket
-					fprintf(stderr,"Collector: chiusura del client %d\n",pfds[i].fd);
-					close(pfds[i].fd);	//chiusura lato server della socket
-					pfds[i].fd=-1;		//indice poll segnalato come da pulire
-					any_closed=1;		//da qui in poi se tutti i client sono disconnessi il server chiude
-				}
-				
-				else {	//letto un nuovo risultato
-					result_t *new_res;		//copia lato server del risultato
-					ec_is(new_res=(result_t*)malloc(sizeof(result_t)),NULL,"collector, allocazione memoria temp");
-					strncpy(new_res->pathname,buf,sizeof(new_res->pathname));
-					memcpy(&(new_res->total),buf+sizeof(new_res->pathname),sizeof(new_res->total));
-					pthread_mutex_lock(&mtx);
-					list_insert(&results,new_res);
-					pthread_mutex_unlock(&mtx);
-					fprintf(stderr,"Collector: client %d inserisce un risultato\n",pfds[i].fd);
-				}
-				*/
-				/*
-				//controlla se ha ricevuto messaggio di disconnessione
-				if(!strncmp(new_res->pathname,DISCONNECT,strlen(DISCONNECT)) && new_res->total<0) {
-					fprintf(stderr,"Collector: chiusura del client %d\n",pfds[i].fd);
-					free(new_res);	//non si inserisce nella lista dei risultati
-					close(pfds[i].fd);
-					pfds[i].fd=-1;	//indice poll da ripulire in seguito
-					any_closed=1;	//da questo punto in poi se abbiamo solo la socket fd_skt il server chiude
-				}
-				else {	//inserimento in lista
-					pthread_mutex_lock(&mtx);
-					list_insert(&results,new_res);
-					fprintf(stderr,"Collector: client %d inserisce un risultato\n",pfds[i].fd);
-					pthread_mutex_unlock(&mtx);
-				}
-				*/
 			}
 		}
 		
 		/*pulizia poll*/
-			fprintf(stderr,"Collector: inizio loop pulizia\n");
+		fprintf(stderr,"Collector: inizio loop pulizia\n");
 		for(i=0;i<nfds;i++) {
 			if(pfds[i].fd==-1) {	//connessione chiusa
 				for(j=i;j<nfds;j++) {	//shift di posizioni dei restanti indici
@@ -398,7 +346,7 @@ int main(int argc, char *argv[]) {
 	}
 	
 	free(pfds);		//dealloca la memoria di poll
-	//pthread_join(printer_thread,(void*)NULL);	//aspetta che il printer thread termini da solo
+	pthread_join(printer_thread,(void*)NULL);	//aspetta che il printer thread termini da solo
 	printlist(results);		//stampa la lista finale dei risultati
 	list_free(results);		//dealloca la memoria dei risultati
 	pthread_mutex_destroy(&mtx);	//dealloca mutex

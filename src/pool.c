@@ -146,31 +146,7 @@ static void *thread_func(void *arg) {
 		fprintf(stderr,"Worker %d: inviato %ld\t%s\n",id,result,buf);
 	}
 	
-	/*disconnessione dal collector*/
-	/*
-	memset(buf,0,BUFFER_SIZE);	//ripulisce il buffer per inviare il messaggio di chiusura connessione
-	result=-1;
-	strncpy(buf,DISCONNECT,strnlen(DISCONNECT,MAX_PATHNAME_LEN));
-	memcpy(buf+MAX_PATHNAME_LEN,&(result),sizeof(long));
-	int already_written=0;
-	int just_written;
-	int to_write=sizeof(message_t);
-	while(to_write>0) {
-		just_written=write(fd_skt,buf+already_written,to_write);
-		if(just_written<0) {	//errore
-			if(errno==EPIPE)	//connessione chiusa, SIGPIPE per fortuna viene ignorato
-				fprintf(stderr,"Worker %d: connessione terminata\n",id);
-			else
-				perror("worker, errore di write");
-			break;
-		}
-		already_written+=just_written;
-		to_write-=just_written;
-	}
-	if(to_write!=0 && errno!=EPIPE)
-		perror("worker, write terminata male");
-	*/
-	close(fd_skt);
+	close(fd_skt);	//disconnessione dal collector
 	
 	fprintf(stderr,"Worker %d: uscita\n",id);
 	pthread_exit((void*)NULL);
