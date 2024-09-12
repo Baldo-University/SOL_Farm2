@@ -157,17 +157,17 @@ int main(int argc, char *argv[]) {
 	if(ioctl(fd_skt,FIONBIO,(char*)&on)==-1) {
 		perror("collector, ioctl");
 		close(fd_skt);
-		break;
+		exit(EXIT_FAILURE);
 	}
 	if(bind(fd_skt,(struct sockaddr*)&sa,sizeof(sa))==-1) {
 		perror("collector, bind");
 		close(fd_skt);
-		break;
+		exit(EXIT_FAILURE);
 	}
 	if(listen(fd_skt,SOMAXCONN)==-1) {
 		perror("collector, listen");
 		close(fd_skt);
-		break;
+		exit(EXIT_FAILURE);
 	}
 	fprintf(stderr,"Collector: aperta socket di listen\n");
 	
@@ -177,7 +177,13 @@ int main(int argc, char *argv[]) {
 	int nfds=1;					//numero di fd su coi fare poll() al momento del lancio
 	int poll_ret=0;				//restituito da poll(), numero di elementi di pfds con un evento o un errore
 	int cur_nfds=nfds;			//valore per l'iterazione su poll
-	ec_is(pfds=calloc(poll_size,sizeof(struct pollfd)),NULL,"collector, calloc pollfd");
+	//calloc alloca memoria e inizializza pollfd
+	pfds=calloc(poll_size,sizeof(struct pollfd));
+	if(pfds==NULL) {
+		perror("collector, allocazione memoria iniziale struct pollfd");
+		close(fd_skt);
+		exit(EXIT_FAILURE);
+	}
 	pfds[0].fd=fd_skt;		//poll prende come primo elemento il socket di ascolto di nuove connessioni
 	pfds[0].events=POLLIN;	//lettura dati
 	fprintf(stderr,"Collector: inizializzato\n");
