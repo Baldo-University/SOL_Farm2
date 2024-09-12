@@ -129,7 +129,6 @@ int main(int argc, char *argv[]) {
 	ec_is(sigaction(SIGUSR1,&collector_sa,NULL),-1,"collector, sigaddset SIGUSR1");
 	ec_is(sigaction(SIGUSR2,&collector_sa,NULL),-1,"collector, sigaddset SIGUSR2");
 	ec_is(sigaction(SIGPIPE,&collector_sa,NULL),-1,"collector, sigaddset SIGPIPE");
-	
 	fprintf(stderr,"Collector: segnali settati\n");
 	
 	/*Setup variabili per il funzionamento del collector*/
@@ -191,7 +190,7 @@ int main(int argc, char *argv[]) {
 	
 	/*loop di poll*/
 	for(;;) {
-		fprintf(stderr,"Collector: inizio loop\n");
+		fprintf(stderr,"Collector: inizio loop principale\n");
 		
 		//controllo di running
 		pthread_mutex_lock(&mtx);
@@ -203,13 +202,13 @@ int main(int argc, char *argv[]) {
 		pthread_mutex_unlock(&mtx);
 		
 		fprintf(stderr,"Collector: in attesa di poll\n");
-		poll_ret=poll(pfds,nfds,POLL_TIMEOUT)
-		if(poll_ret<0) {
+		poll_ret=poll(pfds,nfds,POLL_TIMEOUT);
+		if(poll_ret<0) {	//errore poll
 			perror("collector, poll fallisce");
 			running=0;
 			break;
 		}
-		if(poll_ret==0) {
+		if(poll_ret==0) {	//timeout raggiunto
 			fprintf(stderr,"Collector: raggiunto timeout poll. Inizio chiusura\n");
 			running=0;
 			break;
@@ -270,35 +269,35 @@ int main(int argc, char *argv[]) {
 				fprintf(stderr,"Collector: client %d invia uno o piu' risultati\n",pfds[i].fd);
 				close_conn=0;	//settato a zero, se si verificano problemi si setta ad 1
 				do {	//loop lettura dati fino a che read non restituisce EAGAIN/EWOULDBLOCK
+					fprintf(stderr,"Collector: client %d, lettura messaggio\n",pfds[i].fd);
 					int already_read=0;				//mantiene la posizione dell'ultimo byte letto
-					int just_read;					//byte letti con read()
+					int just_read=0;				//byte letti con read()
 					int to_read=sizeof(message_t);	//byte restanti da leggere
 					while(to_read>0) {	//lettura
 						just_read=read(pfds[i].fd,&(buf[already_read]),to_read);
-							if(just_read<0){
-								if(errno!=EAGAIN || errno!=EWOULDBLOCK) {	//chiusura connessione
-									perror("collector, read");
-									close_conn=1;	//la connessione verra' chiusa per sicurezza
-								}
-								break;	//esce dal while di lettura messaggio
+						if(just_read<0){
+							if(errno!=EAGAIN || errno!=EWOULDBLOCK) {	//chiusura connessione
+								perror("collector, read");
+								close_conn=1;	//la connessione verra' chiusa per sicurezza
 							}
+							fprintf(stderr,"Collector: client %d, while di lettura, EAGAIN\n",pfds[i].fd);
+							break;	//esce dal while di lettura messaggio
+						}
+						if(just_read==0) {	//client ha chiuso la socket
+							fprintf(stderr,"Collector: client %d chiude la connessione\n",pfds[i].fd);
+							close_conn=1;
+							break;	//va a chiudere la socket lato client
+						}
 						already_read+=just_read;
 						to_read-=just_read;
 					}
 					if(to_read!=0) {	//errore, read uscita per errore o read non completata
-						if(to_read>0)	//qualcosa non va nella read...
+						if(to_read>0 && !close_conn)	//qualcosa non va nella read...
 							perror("collector, read non completata");
 						break;	//in ogni caso, esce dal do-while
 					}
-					/*
 					if(close_conn)
 						break;	//uscita dal do-while
-					*/
-					if(just_read==0) {	//client ha chiuso la socket
-						fprintf(stderr,"Collector: client %d chiude la connessione\n".pfds[i].fd);
-						close_conn=1;
-						break;	//va a chiudere la socket lato client
-					}
 					
 					//ricevuto risultato effettivo da mettere in lista
 					fprintf(stderr,"Collector: risultato di %d ricevuto\n",pfds[i].fd);
@@ -374,8 +373,8 @@ int main(int argc, char *argv[]) {
 		}
 		
 		/*pulizia poll*/
+			fprintf(stderr,"Collector: inizio loop pulizia\n");
 		for(i=0;i<nfds;i++) {
-			fprintf(stderr,"Collector: loop pulizia\n");
 			if(pfds[i].fd==-1) {	//connessione chiusa
 				for(j=i;j<nfds;j++) {	//shift di posizioni dei restanti indici
 					pfds[j].fd=pfds[j+1].fd;
@@ -392,7 +391,7 @@ int main(int argc, char *argv[]) {
 			if(nfds==1) {	//solo fd_skt rimane aperta, tutti i client si sono disconnessi
 				pthread_mutex_lock(&mtx);
 				running=0;
-				fprintf(stderr,"Collector: running settato a zero\n");
+				fprintf(stderr,"Collector: inizio terminazione\n");
 				pthread_mutex_unlock(&mtx);
 			}
 		}
