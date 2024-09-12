@@ -112,7 +112,7 @@ int main(int argc, char *argv[]) {
 		fprintf(stderr,"Collector: passato un numero sbagliato di argomenti\n");
 		exit(EXIT_FAILURE);
 	}
-	fprintf(stderr,"---Collector parte---\n");
+	fprintf(stderr,"Collector: partenza\n");
 	
 	/*gestione segnali*/
 	sigset_t mask;	//maschera del collector
@@ -153,9 +153,22 @@ int main(int argc, char *argv[]) {
 	strncpy(sa.sun_path,argv[1],UNIX_PATH_MAX);
 	sa.sun_family=AF_UNIX;
 	ec_is(fd_skt=socket(AF_UNIX,SOCK_STREAM,0),-1,"collector, socket");
-	ec_is(ioctl(fd_skt,FIONBIO,(char*)&on),-1,"collector, ioctl");				//server nonblocking
-	ec_is(bind(fd_skt,(struct sockaddr*)&sa,sizeof(sa)),-1,"collector, bind");
-	ec_is(listen(fd_skt,SOMAXCONN),-1,"collector, listen");
+	//set server socket a nonblocking. Le socket per le connessioni client erediteranno lo stato nonblocking da essa
+	if(ioctl(fd_skt,FIONBIO,(char*)&on)==-1) {
+		perror("collector, ioctl");
+		close(fd_skt);
+		break;
+	}
+	if(bind(fd_skt,(struct sockaddr*)&sa,sizeof(sa))==-1) {
+		perror("collector, bind");
+		close(fd_skt);
+		break;
+	}
+	if(listen(fd_skt,SOMAXCONN)==-1) {
+		perror("collector, listen");
+		close(fd_skt);
+		break;
+	}
 	fprintf(stderr,"Collector: aperta socket di listen\n");
 	
 	/*Setup poll*/
