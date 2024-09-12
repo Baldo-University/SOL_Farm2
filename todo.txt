@@ -1,3 +1,4 @@
-
+-thread stampatore
+-mettere le print solo a debug
 
 nota: se gli errori si rompono prova a mettere SIG_BLOCK invece di SIG_SETMASK nella maschera del master

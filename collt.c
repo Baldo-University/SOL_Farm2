@@ -6,13 +6,16 @@
 #include <sys/types.h>
 #include <sys/un.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "message.h"
 #include "utils.h"
 
 #define SOCKNAME "littlefarm.sck"
-#define SAMPLE "cline1"
+#define SAMPLE1 "cline1"
+#define SAMPLE2 "cline2"
+#define SAMPLE3 "cline3"
 
 long workfun(char *filename) {
 	long result=0;
@@ -67,12 +70,27 @@ int main (void) {
 		}
 		fprintf(stderr,"Client: connesso al collector\n");
 		
-		//invio risultato di prova
-		result=workfun(SAMPLE);
+		//setup ritardo
+		struct timespec delay, delay_rem;
+		delay.tv_sec=1;
+		delay.tv_nsec=1000000;
+		int sleep_result=0;
+		
+		//invio primo risultato di prova
+		result=workfun(SAMPLE1);
 		memset(buf,0,BUFFER_SIZE);
-		strncpy(buf,SAMPLE,MAX_PATHNAME_LEN);
+		strncpy(buf,SAMPLE1,MAX_PATHNAME_LEN);
 		memcpy(buf+MAX_PATHNAME_LEN,&(result),sizeof(long));
+		sleep_result=nanosleep(&delay,&delay_rem);
+		//ritardo
+		while(sleep_result!=0) {
+			if(errno!=EINTR)
+				fprintf(stderr,"whatever\n");
+			errno=0;
+			sleep_result=nanosleep(&delay_rem,&delay_rem);
+		}			
 		already_written=0;
+		just_written=0;
 		to_write=sizeof(message_t);
 		while(to_write>0) {
 			just_written=write(fd_skt,buf+already_written,to_write);
@@ -84,19 +102,27 @@ int main (void) {
 				break;
 			}
 			already_written+=just_written;
-				to_write-=just_written;
+			to_write-=just_written;
 		}
 		if(to_write!=0 && errno!=EPIPE)
 			perror("worker, write terminata male");
 		fprintf(stderr,"Client: inviato messaggio con risultato\n");
 		
-		/*
-		//invio messaggio di chiusura
-		result=-1;
+		//invio secondo risultato di prova
+		result=workfun(SAMPLE2);
 		memset(buf,0,BUFFER_SIZE);
-		strncpy(buf,DISCONNECT,MAX_PATHNAME_LEN);
+		strncpy(buf,SAMPLE2,MAX_PATHNAME_LEN);
 		memcpy(buf+MAX_PATHNAME_LEN,&(result),sizeof(long));
+		sleep_result=nanosleep(&delay,&delay_rem);
+		//ritardo
+		while(sleep_result!=0) {
+			if(errno!=EINTR)
+				fprintf(stderr,"whatever\n");
+			errno=0;
+			sleep_result=nanosleep(&delay_rem,&delay_rem);
+		}			
 		already_written=0;
+		just_written=0;
 		to_write=sizeof(message_t);
 		while(to_write>0) {
 			just_written=write(fd_skt,buf+already_written,to_write);
@@ -108,11 +134,44 @@ int main (void) {
 				break;
 			}
 			already_written+=just_written;
-				to_write-=just_written;
+			to_write-=just_written;
 		}
 		if(to_write!=0 && errno!=EPIPE)
 			perror("worker, write terminata male");
-		*/
+		fprintf(stderr,"Client: inviato messaggio con risultato\n");
+		
+		//invio terzo risultato di prova
+		result=workfun(SAMPLE3);
+		memset(buf,0,BUFFER_SIZE);
+		strncpy(buf,SAMPLE3,MAX_PATHNAME_LEN);
+		memcpy(buf+MAX_PATHNAME_LEN,&(result),sizeof(long));
+		sleep_result=nanosleep(&delay,&delay_rem);
+		//ritardo
+		while(sleep_result!=0) {
+			if(errno!=EINTR)
+				fprintf(stderr,"whatever\n");
+			errno=0;
+			sleep_result=nanosleep(&delay_rem,&delay_rem);
+		}			
+		already_written=0;
+		just_written=0;
+		to_write=sizeof(message_t);
+		while(to_write>0) {
+			just_written=write(fd_skt,buf+already_written,to_write);
+			if(just_written<0) {	//errore
+				if(errno==EPIPE)	//connessione chiusa, SIGPIPE per fortuna viene ignorato
+					fprintf(stderr,"Client: connessione terminata\n");
+				else
+					perror("worker, errore di write");
+				break;
+			}
+			already_written+=just_written;
+			to_write-=just_written;
+		}
+		if(to_write!=0 && errno!=EPIPE)
+			perror("worker, write terminata male");
+		fprintf(stderr,"Client: inviato messaggio con risultato\n");
+		
 		close(fd_skt);	//chiusura socket
 		fprintf(stderr,"Client: inviato messaggio di chiusura\n");
 	}
