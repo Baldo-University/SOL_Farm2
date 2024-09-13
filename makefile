@@ -6,7 +6,6 @@ main_dir = .
 src = $(main_dir)/src
 headers = $(src)/headers
 test_dir = $(main_dir)/test
-tmp_dir = $(main_dir)/tmp
 
 #codice sorgente .c
 source_c := $(wildcard $(src)/*.c)
@@ -56,7 +55,7 @@ generafile.o: $(test_dir)/generafile.c
 	$(CC) $(CFLAGS) $^ -c $@
 
 #rimuove gli eseguibili dei due processi principali e 'chiama' la pulizia delle subdirectory
-clean: clean_test_dir clean_tmp_dir
+clean: clean_test_dir
 	-rm farm
 	-rm collector
 	-rm *.o
@@ -64,13 +63,12 @@ clean: clean_test_dir clean_tmp_dir
 #rimuove i file creati durante l'esecuzione
 clean_test_dir:
 	-rm generafile
+	-rm test/generafile.o
 	-rm *.dat
 	-rm expected.txt
 	-rm -f -R testdir
-	
-#rimuove tutti i file nella cartella tmp
-clean_tmp_dir:
-	-rm $(tmp_dir)/*
+	#istruzione che a regola dovrebbe essere superflua, aggiunta per sicurezza
+	-rm farm2.sck
 
 #esecuzione dello script di test
 test:
