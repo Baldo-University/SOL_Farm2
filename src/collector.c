@@ -39,7 +39,7 @@ typedef struct result {
 void printlist(result_t *list) {
 	result_t *aux=list;
 	while(aux!=NULL) {
-		fprintf(stdout,"%ld\t%s\n",aux->total,aux->pathname);
+		fprintf(stdout,"%ld %s\n",aux->total,aux->pathname);
 		aux=aux->next;
 	}
 }

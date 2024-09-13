@@ -1,6 +1,9 @@
 /*
+PROGETTO FARM2 2023/24
+Autore: Baldini Enrico
+
 Questa sezione di codice contiene il main lanciato come processo iniziale.
-Il main invoca fork per lanciare il processo filgio collector.
+Il main invoca fork per lanciare il processo figlio collector.
 Il processo padre invoca la funzione masterworker.
 */
 

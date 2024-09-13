@@ -1,9 +1,4 @@
 /*
-PROGETTO FARM2 2023/24
-Autore: Baldini Enrico
-
------------
-
 Questa sezione di codice contiene il threadpool del processo MasterWorker
 Il threadpool mantiene la coda di produzione e in questo file sono contenute le funzioni che masterworker
 usa per inserire task in coda.
