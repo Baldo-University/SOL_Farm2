@@ -47,7 +47,10 @@ workfun.o: $(src)/workfun.c $(headers)/utils.h
 	
 collector: $(src)/collector.c $(headers)/message.h $(headers)/utils.h
 	$(CC) $(CFLAGS) $< -o $@
-	
+
+#esecuzione dello script di test
+test:
+	test/test.sh
 
 #rimuove gli eseguibili dei due processi principali e 'chiama' la pulizia delle subdirectory
 clean: clean_test_dir clean_tmp_dir 
