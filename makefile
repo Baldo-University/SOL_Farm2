@@ -1,5 +1,6 @@
 CC = gcc
 CFLAGS = -Wall -pedantic
+CPPFLAGS = -pthread
 
 main_dir = .
 src = $(main_dir)/src
@@ -15,20 +16,16 @@ objects := $(patsubst $(src)/%.c, %.o, $(source_c))
 obj_master := $(filter-out collector.o, $(objects))
 
 #lista di chiamate phony
-.PHONY: all generafile test debug clean clean_test_dir clean_tmp_dir
+.PHONY: all maketest test debug clean clean_test_dir clean_tmp_dir
 
 #genera tutto il necessario per l'esecuzione del programma
-all: generafile farm
+all: maketest farm
 
 #debug esegue all con un flag aggiuntivo che esegue delle stampe di controllo
-debug: CFLAGS += -DDEBUG
+debug: CPPFLAGS += -DDEBUG
 debug: all
 
-#compila generafile
-generafile: $(test_dir)/generafile.c
-	$(CC) $(CFLAGS) $^ -o $@
-
-#lancia il programma
+#crea l'eseguibile del programma
 farm: $(obj_master) collector
 	$(CC) $(CFLAGS) $(obj_master) -o $@
 
@@ -48,13 +45,19 @@ workfun.o: $(src)/workfun.c $(headers)/utils.h
 collector: $(src)/collector.c $(headers)/message.h $(headers)/utils.h
 	$(CC) $(CFLAGS) $< -o $@
 
-#esecuzione dello script di test
-test:
-	test/test.sh
+maketest: generafile
+
+#compila l'eseguibile di generafile
+generafile: $(test_dir)/generafile.o
+	$(CC) $^ -o $@
+
+#build .o di generafile
+generafile.o: $(test_dir)/generafile.c
+	$(CC) $(CFLAGS) $^ -c $@
 
 #rimuove gli eseguibili dei due processi principali e 'chiama' la pulizia delle subdirectory
-clean: clean_test_dir clean_tmp_dir 
-	-rm farm2
+clean: clean_test_dir clean_tmp_dir
+	-rm farm
 	-rm collector
 	-rm *.o
 
@@ -68,3 +71,7 @@ clean_test_dir:
 #rimuove tutti i file nella cartella tmp
 clean_tmp_dir:
 	-rm $(tmp_dir)/*
+
+#esecuzione dello script di test
+test:
+	test/test.sh
