@@ -181,6 +181,10 @@ int main (void) {
 	if(WIFEXITED(collector_status))
 		fprintf(stderr,"Main: stato collector: %d\n",WEXITSTATUS(collector_status));
 	
+	/*Pulizia della socket dal filesystem*/
+	if(remove(SOCKNAME)==-1)
+		DEBUG_PERROR("masterworker, remove di socket");
+	
 	fprintf(stderr,"Fine programma\n");
 	return 0;
 }
