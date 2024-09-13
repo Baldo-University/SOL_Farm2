@@ -1,26 +1,19 @@
 CC = gcc
 CFLAGS = -Wall -pedantic
 
-main_objects = main.o masterworker.o pool.o workfun.o
+MAIN_DIR = .				#directory del progetto
+SRC = $(MAIN_DIR)/src		#directory del source code
+HEADERS = $(SRC)/headers	#directory degli header
+BUILD = $(MAIN_DIR)/build	#directory contenente i *.o
+TEST = $(MAIN_DIR)/test		#directory per i test
+TMP = $(MAIN_DIR)/tmp		#directory per i file temporanei
 
-main: $(main_objects)
-	$(CC) $^ -o $@
+all:
 	
-collector: collector.c
-	$(CC) $(CFLAGS) $^ -o $@
-	
-main.o: main.c
-	$(CC) $(CFLAGS) $^ -c
 
-masterworker.o: masterworker.c
-	$(CC) $(CFLAGS) $^ -c
+test:
 
-pool.o: pool.c
-	$(CC) $(CFLAGS) $^ -c
 
-workfun.o: workfun.c
-	$(CC) $(CFLAGS) $^ -c
-	
 clean:
-	-rm farm2.sck
-	-rm *.o
+
+
