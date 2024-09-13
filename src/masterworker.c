@@ -409,6 +409,10 @@ void masterworker(int argc, char *argv[], char *socket) {
 	}
 	DEBUG("Masterworker: threadpool ha concluso il suo lavoro\n");
 	
+	/*Pulizia della socket dal filesystem*/
+	if(remove(socket)==-1)
+		DEBUG_PERROR("masterworker, remove di socket");
+	
 	/*chiusura forzata del signal handler thread*/
 	if(mw_running) 
 		ec_isnot(pthread_kill(sighandler_thread,SIGQUIT),0,"masterworker, pthread_kill di signal handler");
