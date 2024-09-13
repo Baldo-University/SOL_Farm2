@@ -2,7 +2,8 @@
 Progetto SOL 2023/24, appello di Settembre.
 
 Istruzioni rapide per l'utilizzo di Farm2
-Su Linux, aprire un terminale sulla directory principale del progetto. Dopodiché, digitare i seguenti comandi
+Su Linux, aprire un terminale sulla directory principale del progetto. Dopodiché, digitare i seguenti comandi:
+
 make
 make test
 make clean
