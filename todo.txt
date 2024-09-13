@@ -1,5 +1,3 @@
--mettere le print solo a debug
--organizzazione file
 -makefile
 -descrizione rapida dei file 
 
