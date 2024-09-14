@@ -1,6 +1,6 @@
 /*
 PROGETTO FARM2 2023/24
-Autore: Baldini Enrico
+Autore: Baldini Enrico, matrciola 597780
 
 Questa sezione di codice contiene il main lanciato come processo iniziale.
 Il main invoca fork per lanciare il processo figlio collector.
@@ -14,8 +14,8 @@ Il processo padre invoca la funzione masterworker.
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include "masterworker.h"	//header della funzione che indica il funzionamento di masterworker
-#include "utils.h"	//utilities
+#include "headers/masterworker.h"	//header della funzione che indica il funzionamento di masterworker
+#include "headers/utils.h"	//utilities
 
 #define SOCKNAME "farm2.sck"	//nome socket, da passare a collector e masterworker
 
