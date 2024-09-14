@@ -1,4 +1,15 @@
-/*SCRIVERE DESCRIZIONE*/
+/*
+Il masterworker svolge tre compiti: gestione dei segnali, getopt e produzione dei file da elaborare.
+Il primo compito e' gestito da un thread detached che si occupa dei segnali in maniera asincrona.
+In seguito alla getopt masterworker ordina la creazione del threadpool e attende che si inizializzi.
+Solo una volta che il pool e' pronto comincia la produzione.
+Prima dell'inserimento di ogni file si controlla se si sono verificati segnali SIGUSR1 o SIGUSR2 e in tal caso
+avverte il threadpool di aumentare o diminuire i propri worker di conseguenza.
+Quando la produzione termina, per esaurimento dei file o per segnale di arresto, si attende che threadpool completi
+di consumare i task ricevuti fino a quel punto. Ricevuto il numero di worker al termine, masterworker crea il file
+"nworkeratexit.txt" e distrugge la socket di connessione presente nel filesystem.
+Infine, il thread che gestisce i segnali riceve SIGQUIT e termina
+*/
 
 #include <dirent.h>
 #include <errno.h>
@@ -12,9 +23,9 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "masterworker.h"
-#include "pool.h"
-#include "utils.h"
+#include "headers/masterworker.h"
+#include "headers/pool.h"
+#include "headers/utils.h"
 
 #define MAX_PATHNAME_LEN 1+MAX_NAMELENGTH
 
@@ -255,15 +266,17 @@ void masterworker(int argc, char *argv[], char *socket) {
 		
 		//se bisogna cambiare il numero di worker
 		pthread_mutex_lock(&thread_num_mtx);
-		while(thread_num_change>0) {
-			DEBUG("Master: ricevuto SIGUSR1\n");
-			add_worker(pool);
-			thread_num_change--;
-		}
-		while(thread_num_change<0) {
-			DEBUG("Master: ricevuto SIGUSR2\n");
-			remove_worker(pool);
-			thread_num_change++;
+		while(thread_num_change!=0) {
+			if(thread_num_change>0) {
+				DEBUG("Master: ricevuto SIGUSR1\n");
+				add_worker(pool);
+				thread_num_change--;
+			}
+			else if(thread_num_change<0) {
+				DEBUG("Master: ricevuto SIGUSR2\n");
+				remove_worker(pool);
+				thread_num_change++;
+			}
 		}
 		pthread_mutex_unlock(&thread_num_mtx);
 		
@@ -292,6 +305,8 @@ void masterworker(int argc, char *argv[], char *socket) {
 		}
 	}
 	
+	pthread_kill(sighandler_thread,SIGTERM);
+	
 	/*ricerca dei file dalle directory passate con -d*/
 	char fullpathname[MAX_PATHNAME_LEN];	//stringa per memorizzare il nome completo dei file
 	while(directories!=NULL) {
@@ -305,15 +320,17 @@ void masterworker(int argc, char *argv[], char *socket) {
 		pthread_mutex_unlock(&mw_running_mtx);
 		//se bisogna cambiare il numero di worker
 		pthread_mutex_lock(&thread_num_mtx);
-		while(thread_num_change>0) {	
-			DEBUG("Master: ricevuto SIGUSR1\n");
-			add_worker(pool);
-			thread_num_change--;
-		}
-		while(thread_num_change<0) {
-			DEBUG("Master: ricevuto SIGUSR2\n");
-			remove_worker(pool);
-			thread_num_change++;
+		while(thread_num_change!=0) {
+			if(thread_num_change>0) {
+				DEBUG("Master: ricevuto SIGUSR1\n");
+				add_worker(pool);
+				thread_num_change--;
+			}
+			else if(thread_num_change<0) {
+				DEBUG("Master: ricevuto SIGUSR2\n");
+				remove_worker(pool);
+				thread_num_change++;
+			}
 		}
 		pthread_mutex_unlock(&thread_num_mtx);
 		
