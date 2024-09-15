@@ -15,4 +15,4 @@ Il primo comando compila il codice sorgente e generafile.c. Il secondo lancia lo
 
 Digitando "make debug" al posto di "make", il programma viene lanciato in versione debug
 
-NOTA 15/9/2024: l'errore dei primi due test di "test.sh" nella versione originale del programma erano dovuti ad un comando "pthred_kill()", inserito durante la fase finale di test e situato tra la ricerca di file da linea di comando e nelle directory, che inviava un SIGTERM al master. Ciò portava ad una terminazione prematura del programma. Da notare che i file non inviati al collector erano proprio quelli all'interno di directory passate con -d.  
+NOTA 15/9/2024: l'errore dei primi due test di "test.sh" nella versione originale del programma erano dovuti ad un comando "pthred_kill()", inserito durante la fase finale di test e erroneamente non rimosso, situato tra la ricerca di file da linea di comando e nelle directory. In tal modo master inviava un SIGTERM a se stesso, portando ad una terminazione prematura del programma. Da notare che i file non inviati al collector erano proprio quelli all'interno di directory passate con -d.  
