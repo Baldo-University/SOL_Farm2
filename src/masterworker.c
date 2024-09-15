@@ -122,7 +122,7 @@ void list_free(node_t *head) {
 }
 
 void masterworker(int argc, char *argv[], char *socket) {
-	DEBUGGER(fprintf(stderr,"---MasterWorker parte---\n"));
+	DEBUGGER(fprintf(stderr,"MasterWorker: partenza\n"));
 	
 	/*impostazione valori globali*/
 	mw_running=1;
@@ -255,7 +255,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 	/*ricerca dei file da linea di comando*/
 	int i;
 	for(i=optind;i<argc;i++) {
-		DEBUGGER(fprintf(stderr,"Filefinder: argv[%d] inizia\n",i));
+		DEBUGGER(fprintf(stderr,"Filefinder: inizia invio di argv[%d]: %s\n",i,argv[i]));
 		pthread_mutex_lock(&mw_running_mtx);
 		if(!mw_running) {	//se bisogna chiudere anticipatamente il programma
 			DEBUGGER(fprintf(stderr,"Master: ho preso segnale di chiusura\n"));
@@ -304,9 +304,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 			DEBUGGER(fprintf(stderr,"Filefinder: inserito file %s in coda\n",argv[i]));
 		}
 	}
-	
-	pthread_kill(sighandler_thread,SIGTERM);
-	
+		
 	/*ricerca dei file dalle directory passate con -d*/
 	char fullpathname[MAX_PATHNAME_LEN];	//stringa per memorizzare il nome completo dei file
 	while(directories!=NULL) {

@@ -21,6 +21,7 @@ connessioni client
 #include <unistd.h>
 
 #include "headers/message.h"
+#include "headers/utils.h"
 
 #define POLL_SIZE 16		//dimensione degli incrementi lineari degli indici di struct pollfd
 #define POLL_TIMEOUT 10000	//timeout di poll() in ms
@@ -204,7 +205,7 @@ int main(int argc, char *argv[]) {
 		}
 		pthread_mutex_unlock(&mtx);
 		
-		DEBUGGER(fprintf(stderr,"Collector: in attesa di poll\n"));
+		DEBUGGER(fprintf(stderr,"Collector: poll in attesa di eventi\n"));
 		poll_ret=poll(pfds,nfds,POLL_TIMEOUT);
 		if(poll_ret<0) {	//errore poll
 			DEBUGGER(perror("collector, poll fallisce"));
@@ -309,7 +310,7 @@ int main(int argc, char *argv[]) {
 					strncpy(new_res->pathname,buf,sizeof(new_res->pathname));
 					memcpy(&(new_res->total),buf+sizeof(new_res->pathname),sizeof(new_res->total));
 					pthread_mutex_lock(&mtx);
-					DEBUGGER(fprintf(stderr,"Collector: client %d inserisce un risultato\n",pfds[i].fd));
+					DEBUGGER(fprintf(stderr,"Collector: client %d inserisce il risultato %ld %s\n",pfds[i].fd,new_res->total,new_res->pathname));
 					list_insert(&results,new_res);
 					pthread_mutex_unlock(&mtx);
 					

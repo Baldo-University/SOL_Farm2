@@ -16,6 +16,7 @@ usa per inserire task in coda.
 
 #include "headers/message.h"
 #include "headers/pool.h"
+#include "headers/utils.h"
 #include "headers/workfun.h"
 
 //linked list di thread worker
@@ -60,7 +61,7 @@ static void *thread_func(void *arg) {
 			pthread_exit((void*)NULL);
 		}
 	}
-	DEBUGGER(fprintf(stderr,"Worker %d: connessione\n",id));
+	DEBUGGER(fprintf(stderr,"Worker %d: connesso\n",id));
 	
 	while(pool->running) {
 		DEBUGGER(fprintf(stderr,"Worker %d: in task loop\n",id));
@@ -138,7 +139,7 @@ static void *thread_func(void *arg) {
 		}
 		if(to_write!=0 && errno!=EPIPE)
 			DEBUGGER(perror("worker, write terminata male"));
-		DEBUGGER(fprintf(stderr,"Worker %d: inviato %ld\t%s\n",id,result,buf));
+		DEBUGGER(fprintf(stderr,"Worker %d: inviato %ld %s\n",id,result,buf));
 	}
 	
 	close(fd_skt);	//disconnessione dal collector
@@ -306,7 +307,6 @@ threadpool_t *initialize_pool(long pool_size, size_t queue_len, char* socket) {
 	pool->tasks_head=NULL;
 	pool->tasks_tail=NULL;
 	//memset(pool->socket,0,MAX_PATHNAME_LEN);
-	DEBUGGER(fprintf(stderr,"Pool: strlen prima di pool->socket\n"));
 	pool->socket=malloc(MAX_PATHNAME_LEN*sizeof(char));
 	if(pool->socket==NULL) {
 		DEBUGGER(fprintf(stderr,"pool, initialize_pool, non e' stato possibile allocare memoria alla stringa del socket\n"));

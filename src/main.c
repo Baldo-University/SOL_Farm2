@@ -1,6 +1,6 @@
 /*
 PROGETTO FARM2 2023/24
-Autore: Baldini Enrico, matrciola 597780
+Autore: Baldini Enrico, matricola 597780
 
 Questa sezione di codice contiene il main lanciato come processo iniziale.
 Il main invoca fork per lanciare il processo figlio collector.

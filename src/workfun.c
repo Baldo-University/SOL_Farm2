@@ -8,7 +8,6 @@ prodotto tra 'i' e l'i-esimo intero.
 #include <stdio.h>
 
 #include "headers/utils.h"
-
 long workfun(char *filename) {
 	long result=0;
 	FILE *task=fopen(filename,"r");	//apertura del file con bufferized I/O
