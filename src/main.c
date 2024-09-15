@@ -58,8 +58,8 @@ int main(int argc, char *argv[]) {
 	int collector_status;
 	collector=waitpid(collector,&collector_status,0);
 	if(WIFEXITED(collector_status))
-		DEBUG("Main: stato collector: %d\n",WEXITSTATUS(collector_status));
+		DEBUGGER(fprintf(stderr,"Main: stato collector: %d\n",WEXITSTATUS(collector_status)));
 	
-	DEBUG("Fine programma\n");
+	DEBUGGER(fprintf(stderr,"Fine programma\n"));
 	return 0;
 }
