@@ -13,11 +13,9 @@
 		
 	//stampe di debug
 	#ifdef DEBUG
-		#define DEBUG(FMT, ...)	fprintf(stderr,FMT,__VA_ARGS__)
-		#define DEBUG_PERROR(string) perror(string)
+		#define DEBUGGER(command) command
 	#else
-		#define DEBUG(FMT, ...)
-		#define DEBUG_PERROR(string)
+		#define DEBUGGER(command)
 	#endif
 	
 #endif
