@@ -21,7 +21,7 @@ obj_master := $(filter-out collector.o, $(objects))
 all: maketest farm
 
 #debug esegue all con un flag aggiuntivo che esegue delle stampe di controllo
-debug: CPPFLAGS += -DDEBUG
+debug: CFLAGS += -DDEBUG
 debug: all
 
 #crea l'eseguibile del programma
