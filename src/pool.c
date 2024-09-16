@@ -151,16 +151,16 @@ static void *thread_func(void *arg) {
 //Inserisce task in coda
 int enqueue_task(threadpool_t *pool, char* filename) {
 	if(pool==NULL) {
-		DEBUGGER(fprintf(stderr,"pool, enqueue_task, pool non inizializzato\n"));
+		DEBUGGER(fprintf(stderr,"Pool: enqueue_task, pool non inizializzato\n"));
 		return -1;
 	}
 	if(filename==NULL) {
-		DEBUGGER(fprintf(stderr,"pool, enqueue_task, task vuoto\n"));
+		DEBUGGER(fprintf(stderr,"Pool: enqueue_task, task vuoto\n"));
 		return -2;
 	}
 	tasklist_t *newtask=malloc(sizeof(tasklist_t));
 	if(newtask==NULL) {
-		DEBUGGER(fprintf(stderr,"pool, enqueue_task, non e' stato possibile allocare memoria al task\n"));
+		DEBUGGER(fprintf(stderr,"Pool: enqueue_task, non e' stato possibile allocare memoria al task\n"));
 		return -3;
 	}
 	//creazione nuovo task
@@ -170,7 +170,7 @@ int enqueue_task(threadpool_t *pool, char* filename) {
 	//inserimento in fondo alla coda di produzione
 	pthread_mutex_lock(&pool->task_mtx);
 	while(pool->queue_size==pool->cur_queue_size) {	//attendi che ci sia spazio
-		DEBUGGER(fprintf(stderr,"pool: enqueue coda piena\n"));
+		DEBUGGER(fprintf(stderr,"Pool: enqueue coda piena\n"));
 		pthread_cond_wait(&pool->full_queue_cond,&pool->task_mtx);
 	}
 	if(pool->tasks_head==NULL)	//coda di produzione vuota
@@ -182,7 +182,7 @@ int enqueue_task(threadpool_t *pool, char* filename) {
 	pool->cur_queue_size++;
 	pthread_cond_signal(&pool->empty_queue_cond);	//segnala i thread della presenza di task in coda
 	pthread_mutex_unlock(&pool->task_mtx);
-	DEBUGGER(fprintf(stderr,"pool: inserito task %s\n",filename));
+	DEBUGGER(fprintf(stderr,"Pool: inserito task %s\n",filename));
 	return 0;	//terminato con successo
 }
 
@@ -190,18 +190,18 @@ int enqueue_task(threadpool_t *pool, char* filename) {
 //crea un worker nel pool
 void add_worker(threadpool_t *pool) {
 	if(pool==NULL) {
-		DEBUGGER(fprintf(stderr,"pool, add_worker, threadpool non inizializzato\n"));
+		DEBUGGER(fprintf(stderr,"Pool: add_worker, threadpool non inizializzato\n"));
 		return;
 	}
 	workerlist_t *new_worker=malloc(sizeof(workerlist_t));
 	if(new_worker==NULL) {
-		DEBUGGER(fprintf(stderr,"pool, add_worker, non e' stato possibile allocare memoria al worker\n"));
+		DEBUGGER(fprintf(stderr,"Pool: add_worker, non e' stato possibile allocare memoria al worker\n"));
 		return;
 	}
 	new_worker->next=NULL;
 	int res=pthread_create(&new_worker->worker,NULL,thread_func,(void*)pool);
 	if(res) {
-		DEBUGGER(fprintf(stderr,"pool, add_worker, errore in pthread_create(), errore %d\n",res));
+		DEBUGGER(fprintf(stderr,"Pool: add_worker, errore in pthread_create(), errore %d\n",res));
 		free(new_worker);
 		return;
 	}
@@ -230,20 +230,20 @@ void remove_worker(threadpool_t *pool) {
 //attende che il threadpool finisca di elaborare i task passati
 long await_pool_completion(threadpool_t *pool) {
 	if(pool==NULL) {
-		DEBUGGER(fprintf(stderr,"pool, await_pool_completion su threadpool non inizializzato\n"));
+		DEBUGGER(fprintf(stderr,"Pool: await_pool_completion su threadpool non inizializzato\n"));
 		return -1;
 	}
-	DEBUGGER(fprintf(stderr,"closepool: inizio\n"));
+	DEBUGGER(fprintf(stderr,"Closepool: inizio\n"));
 	//salva il numero di worker al momento della chiamata
 	pthread_mutex_lock(&pool->worker_mtx);
 	long workersatexit=pool->num_threads;
 	pthread_mutex_unlock(&pool->worker_mtx);
-	DEBUGGER(fprintf(stderr,"closepool: salvato numero di worker alla fine\n"));
+	DEBUGGER(fprintf(stderr,"Closepool: salvato numero di worker alla fine\n"));
 	
 	//inserisce il task finale in coda
 	tasklist_t *finaltask=malloc(sizeof(tasklist_t));
 	if(finaltask==NULL) {	//fatal error!
-		DEBUGGER(fprintf(stderr,"pool, await_pool_completion, non e' stato possibile allocare memoria al task fianle \n"));
+		DEBUGGER(fprintf(stderr,"Pool: await_pool_completion, non e' stato possibile allocare memoria al task fianle \n"));
 		pool->running=0;
 		return -1;
 	}
@@ -261,14 +261,14 @@ long await_pool_completion(threadpool_t *pool) {
 	//dealloca i worker
 	workerlist_t *aux=pool->worker_head;
 	while(pool->worker_head!=NULL) {
-		DEBUGGER(fprintf(stderr,"closepool: loop join thread\n"));
+		DEBUGGER(fprintf(stderr,"Closepool: loop join thread\n"));
 		pthread_join(pool->worker_head->worker,NULL);
 		pool->worker_head=pool->worker_head->next;
 		free(aux);
 		aux=pool->worker_head;
 	}
 	free(pool->tasks_head);	//dealloca il task conclusivo
-	DEBUGGER(fprintf(stderr,"closepool: rimosso task finale\n"));
+	DEBUGGER(fprintf(stderr,"Closepool: rimosso task finale\n"));
 	
 	//distruggi mutex e cond
 	if(pthread_mutex_destroy(&pool->worker_mtx))
@@ -297,7 +297,7 @@ threadpool_t *initialize_pool(long pool_size, size_t queue_len, char* socket) {
 	//crea threadpool
 	threadpool_t *pool=(threadpool_t*)malloc(sizeof(threadpool_t));
 	if(pool==NULL) {
-		DEBUGGER(fprintf(stderr,"pool, initialize_pool, non e' stato possibile allocare memoria al threadpool.\n"));
+		DEBUGGER(fprintf(stderr,"Pool: initialize_pool, non e' stato possibile allocare memoria al threadpool.\n"));
 		return NULL;
 	}
 	//inizializzazione variabili di pool
@@ -309,7 +309,7 @@ threadpool_t *initialize_pool(long pool_size, size_t queue_len, char* socket) {
 	//memset(pool->socket,0,MAX_PATHNAME_LEN);
 	pool->socket=malloc(MAX_PATHNAME_LEN*sizeof(char));
 	if(pool->socket==NULL) {
-		DEBUGGER(fprintf(stderr,"pool, initialize_pool, non e' stato possibile allocare memoria alla stringa del socket\n"));
+		DEBUGGER(fprintf(stderr,"Pool: initialize_pool, non e' stato possibile allocare memoria alla stringa del socket\n"));
 		free(pool);
 		return NULL;
 	}
@@ -330,7 +330,7 @@ threadpool_t *initialize_pool(long pool_size, size_t queue_len, char* socket) {
 		add_worker(pool);
 	pthread_mutex_lock(&pool->worker_mtx);
 	if(pool->num_threads==0) {
-		DEBUGGER(fprintf(stderr,"pool, initialize_pool, threadpool parte con zero worker\n"));
+		DEBUGGER(fprintf(stderr,"Pool: initialize_pool, threadpool parte con zero worker\n"));
 		pthread_mutex_unlock(&pool->worker_mtx);
 		if(pthread_mutex_destroy(&pool->worker_mtx))
 			DEBUGGER(perror("pool, initialize_pool, pthread_mutex_destroy worker_mtx"));

@@ -252,6 +252,7 @@ void masterworker(int argc, char *argv[], char *socket) {
 	int sleep_result=0;
 	DEBUGGER(fprintf(stderr,"Masterworker: ritardo impostato\n"));
 
+	/*FILEFINDER*/
 	/*ricerca dei file da linea di comando*/
 	int i;
 	for(i=optind;i<argc;i++) {
@@ -427,6 +428,8 @@ void masterworker(int argc, char *argv[], char *socket) {
 	/*Pulizia della socket dal filesystem*/
 	if(remove(socket)==-1)
 		DEBUGGER(perror("masterworker, remove di socket"));
+	else
+		DEBUGGER(fprintf(stderr,"Masterworker: '%s' rimossa\n",socket));
 	
 	/*chiusura forzata del signal handler thread*/
 	if(mw_running) 

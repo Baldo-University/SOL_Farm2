@@ -43,6 +43,7 @@ void printlist(result_t *list) {
 		fprintf(stdout,"%ld %s\n",aux->total,aux->pathname);
 		aux=aux->next;
 	}
+	fflush(stdout);
 }
 
 //Funzione thread che stampa la lista incompleta di risultati ogni secondo
@@ -226,8 +227,8 @@ int main(int argc, char *argv[]) {
 				DEBUGGER(fprintf(stderr,"Collector: non ricevuto alcun evento da %d\n",pfds[i].fd));
 				continue;	
 			}
-			if(pfds[i].revents != POLLIN)	//errore
-				DEBUGGER(fprintf(stderr,"Collector: ricevuto evento diverso da POLLIN\n"));
+			if(!(pfds[i].revents & POLLIN))	//errore
+				DEBUGGER(fprintf(stderr,"Collector: ricevuto evento diverso da POLLIN, probabilmente POLLHUP + POLLIN\n"));
 			
 			//ricevuta richiesta di nuova connessione client
 			if(pfds[i].fd==fd_skt) {
@@ -272,38 +273,40 @@ int main(int argc, char *argv[]) {
 			else {
 				DEBUGGER(fprintf(stderr,"Collector: client %d invia uno o piu' risultati\n",pfds[i].fd));
 				close_conn=0;	//settato a zero, se si verificano problemi si setta ad 1
-				do {	//loop lettura dati fino a che read non restituisce EAGAIN/EWOULDBLOCK
-					DEBUGGER(fprintf(stderr,"Collector: client %d, lettura messaggio\n",pfds[i].fd));
-					int already_read=0;				//mantiene la posizione dell'ultimo byte letto
-					int just_read=0;				//byte letti con read()
-					int to_read=sizeof(message_t);	//byte restanti da leggere
-					while(to_read>0) {	//lettura
-						just_read=read(pfds[i].fd,&(buf[already_read]),to_read);
-						if(just_read<0){
-							if(errno!=EAGAIN || errno!=EWOULDBLOCK) {	//chiusura connessione
-								DEBUGGER(perror("collector, read"));
-								close_conn=1;	//la connessione verra' chiusa per sicurezza
-							}
-							DEBUGGER(fprintf(stderr,"Collector: client %d, while di lettura, EAGAIN o EWOULDBLOCK\n",pfds[i].fd));
-							break;	//esce dal while di lettura messaggio
+
+				DEBUGGER(fprintf(stderr,"Collector: client %d, lettura messaggio\n",pfds[i].fd));
+				int already_read=0;				//mantiene la posizione dell'ultimo byte letto
+				int just_read=0;				//byte letti con read()
+				int to_read=sizeof(message_t);	//byte restanti da leggere
+				while(to_read>0) {	//lettura
+					just_read=read(pfds[i].fd,&(buf[already_read]),to_read);
+					if(just_read<0) {
+						if(errno!=EAGAIN || errno!=EWOULDBLOCK) {
+							DEBUGGER(perror("collector, read"));
+							close_conn=1;	//la connessione verra' chiusa per sicurezza
 						}
-						if(just_read==0) {	//client ha chiuso la socket
-							DEBUGGER(fprintf(stderr,"Collector: client %d chiude la connessione\n",pfds[i].fd));
-							close_conn=1;
-							break;	//va a chiudere la socket lato client
-						}
-						already_read+=just_read;
-						to_read-=just_read;
+						DEBUGGER(fprintf(stderr,"Collector: client %d, while di lettura, EAGAIN o EWOULDBLOCK\n",pfds[i].fd));
+						break;
 					}
-					if(to_read!=0) {	//errore, read uscita per errore o read non completata
-						if(to_read>0 && !close_conn)	//qualcosa non va nella read...
-							DEBUGGER(perror("collector, read non completata"));
-						break;	//in ogni caso, esce dal do-while
+					if(just_read==0) {	//client ha chiuso la socket
+						DEBUGGER(fprintf(stderr,"Collector: client %d chiude la connessione\n",pfds[i].fd));
+						close_conn=1;
+						break;
 					}
-					if(close_conn)
-						break;	//uscita dal do-while
-					
-					//ricevuto risultato da mettere in lista
+					already_read+=just_read;
+					to_read-=just_read;
+				}
+				if(to_read!=0) {	//vero se: connessione terminata o errore nella read()
+					if(close_conn) {	//chiusura socket lato server
+						close(pfds[i].fd);	//close vera e propria
+						pfds[i].fd=-1;		//segnala alla struct pollfd che va pulito un file descriptor
+						//da ora in poi se nfds==1 si chiude il server perche' non ci sono piu' worker collegati
+						any_closed=1;
+					}
+					else	//siamo nel secondo caso
+						DEBUGGER(perror("collector, read non completata"));
+				}
+				else {	//messaggio ricevuto con successo
 					DEBUGGER(fprintf(stderr,"Collector: risultato di %d ricevuto\n",pfds[i].fd));
 					result_t *new_res;
 					ec_is(new_res=(result_t*)malloc(sizeof(result_t)),NULL,"collector, allocazione memoria temp");
@@ -313,14 +316,6 @@ int main(int argc, char *argv[]) {
 					DEBUGGER(fprintf(stderr,"Collector: client %d inserisce il risultato %ld %s\n",pfds[i].fd,new_res->total,new_res->pathname));
 					list_insert(&results,new_res);
 					pthread_mutex_unlock(&mtx);
-					
-				} while(1);
-				
-				if(close_conn) {	//chiusura socket lato server
-					close(pfds[i].fd);	//close vera e propria
-					pfds[i].fd=-1;		//segnala alla struct pollfd che va pulito un file descriptor
-					//da ora in poi se nfds==1 si chiude il server perche' non ci sono piu' worker collegati
-					any_closed=1;
 				}
 			}
 		}
