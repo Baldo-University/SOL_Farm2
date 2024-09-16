@@ -1,9 +1,7 @@
 #ifndef MESSAGE	
 	#define MESSAGE
 	
-	#include "utils.h"
-	
-	#define MAX_PATHNAME_LEN 1+MAX_NAMELENGTH
+	#define MAX_PATHNAME_LEN 256
 	
 	#define UNIX_PATH_MAX 108	//lunghezza massima pathname socket
 	#define BUFFER_SIZE 264		//dimensione del buffer di invio dati
