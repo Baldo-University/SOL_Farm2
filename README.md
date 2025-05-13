@@ -1,6 +1,9 @@
 # SOL_Farm2
 Progetto SOL 2023/24, appello di Settembre.
 
+NOTE: THIS PROJECT IS NOT SAFE, USES NON-CANCELABLE THREADS, MAY NOT END AND/OR DEALLOCATE MEMORY
+THIS WARNING WILL REMAIN INDEFINITELY UNTIL THE STRUCTURAL PROBLEM IS FIXED
+
 Istruzioni rapide per l'utilizzo di Farm2
 
 Su Linux, aprire un terminale sulla directory principale del progetto. Dopodiché, digitare i seguenti comandi:
